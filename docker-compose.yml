@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: flx-rent-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: flxrent
+      POSTGRES_PASSWORD: flxrent123
+      POSTGRES_DB: flx_rent
+    ports:
+      - "5432:5432"
+    volumes:
+      - flx_rent_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flxrent -d flx_rent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  flx_rent_data:

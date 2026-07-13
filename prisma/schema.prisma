@@ -1,0 +1,950 @@
+// FLX Rent - Prisma Datenmodell
+// Digitale Werkzeug- und Produktverwaltung für Darda GmbH
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum UserRole {
+  ADMIN
+  DISPOSITION
+  LAGER
+  AUSSENDIENST
+  SERVICE
+  LESEND
+}
+
+enum ProductStatus {
+  VERFUEGBAR
+  RESERVIERT
+  VORGEMERKT
+  IN_VORBEREITUNG
+  ABHOLBEREIT
+  UNTERWEGS
+  BEIM_KUNDEN
+  AUF_MESSE
+  BEI_DEMO
+  INTERN_IM_EINSATZ
+  RUECKGABE_AUSSTEHEND
+  IN_PRUEFUNG
+  IN_WARTUNG
+  IN_REPARATUR
+  BESCHAEDIGT
+  GESPERRT
+  AUSGEMUSTERT
+}
+
+enum ProductCondition {
+  NEU
+  SEHR_GUT
+  GUT
+  BEFRIEDIGEND
+  MAENGELHAFT
+  BESCHAEDIGT
+}
+
+enum LocationType {
+  HAUPTLAGER
+  AUSSENLAGER
+  NIEDERLASSUNG
+  KUNDE
+  MESSE
+  DEMO
+  AUSSENDIENSTFAHRZEUG
+  SPEDITION
+  WERKSTATT
+  REPARATURDIENSTLEISTER
+  UNTERWEGS
+}
+
+enum BookingType {
+  KUNDENVERMIETUNG
+  MESSE
+  PRODUKTDEMO
+  VORFUEHRUNG
+  AUSSENDIENSTEINSATZ
+  INTERNER_EINSATZ
+  TRANSPORT
+  WARTUNG
+  REPARATUR
+  SPERZZEIT
+}
+
+enum BookingStatus {
+  ENTWURF
+  ANFRAGE
+  VORGEMERKT
+  BESTAETIGT
+  IN_VORBEREITUNG
+  ABHOLBEREIT
+  AUSGEGEBEN
+  UNTERWEGS
+  AKTIV
+  RUECKGABE_FAELLIG
+  UEBERFAELLIG
+  ZURUECKGEGEBEN
+  IN_PRUEFUNG
+  ABGESCHLOSSEN
+  STORNIERT
+}
+
+enum EventType {
+  MESSE
+  KUNDENVORFUEHRUNG
+  INTERNE_SCHULUNG
+  HAENDLERSCHULUNG
+  PRODUKTTEST
+  AUSSENDIENST_DEMO
+}
+
+enum EventStatus {
+  GEPLANT
+  VORBEREITUNG
+  LAUFEND
+  ABBAU
+  ABGESCHLOSSEN
+  STORNIERT
+}
+
+enum DamageCategory {
+  KRATZER
+  RISS
+  BRUCH
+  VERFORMUNG
+  HYDRAULIKSCHADEN
+  LECKAGE
+  ELEKTRISCHER_DEFEKT
+  VERSCHLEISS
+  FEHLENDES_TEIL
+  TRANSPORTSCHADEN
+  UNSACHGEMAESSE_NUTZUNG
+  SONSTIGER_SCHADEN
+}
+
+enum DamageSeverity {
+  GERING
+  MITTEL
+  SCHWER
+  SICHERHEITSRELEVANT
+}
+
+enum DamageStatus {
+  NEU
+  IN_PRUEFUNG
+  ANGEBOT_ANGEFORDERT
+  FREIGEGEBEN
+  IN_REPARATUR
+  REPARIERT
+  ABGERECHNET
+  GESCHLOSSEN
+}
+
+enum MaintenanceStatus {
+  GEPLANT
+  FAELLIG
+  UEBERFAELLIG
+  IN_BEARBEITUNG
+  ABGESCHLOSSEN
+}
+
+enum MaintenanceType {
+  ROUTINE
+  SICHERHEITSPRUEFUNG
+  INSPEKTION
+  REPARATUR
+  KALIBRIERUNG
+}
+
+enum CostType {
+  MIETE
+  INTERNE_KOSTEN
+  TRANSPORT
+  VERSICHERUNG
+  REPARATUR
+  REINIGUNG
+  MESSE
+  DEMO
+  ERSTZTEIL
+  NACHBELASTUNG
+  KAUTION
+}
+
+enum NotificationType {
+  AUSGABE_MORGEN
+  RUECKGABE_MORGEN
+  RUECKGABE_UEBERFAELLIG
+  NEUE_BUCHUNG
+  BUCHUNGSKONFLIKT
+  SCHADEN_GEMELDET
+  WARTUNG_FAELLIG
+  ZUBEHOER_FEHLT
+  PRODUKT_VERSCHOBEN
+  PRODUKT_VERFUEGBAR
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ARCHIVE
+  STATUS_CHANGE
+  LOGIN
+  LOGOUT
+}
+
+enum ShipmentMethod {
+  ABHOLUNG
+  EIGENTRANSPORT
+  SPEDITION
+  KURIER
+  POST
+}
+
+enum DocumentType {
+  DATENBLATT
+  BEDIENUNGSANLEITUNG
+  VERTRAG
+  LIEFERSCHEIN
+  RUECKGABEPROTOKOLL
+  PRUEFBERICHT
+  RECHNUNG
+  SONSTIGES
+}
+
+// ==================== AUTH ====================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  firstName     String
+  lastName      String
+  phone         String?
+  role          UserRole  @default(LESEND)
+  isActive      Boolean   @default(true)
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  bookingsResponsible Booking[]       @relation("BookingResponsible")
+  eventsResponsible   Event[]         @relation("EventResponsible")
+  eventParticipants   EventParticipant[]
+  checkOuts           CheckOut[]
+  checkIns            CheckIn[]
+  damageReports       DamageReport[]  @relation("DamageReporter")
+  locationChanges     LocationHistory[]
+  statusChanges       StatusHistory[]
+  auditLogs           AuditLog[]
+  notifications       Notification[]
+  maintenanceRecords  Maintenance[]
+
+  @@index([email])
+  @@index([role])
+}
+
+// ==================== KUNDEN ====================
+
+model Customer {
+  id              String   @id @default(cuid())
+  customerNumber  String   @unique
+  companyName     String
+  industry        String?
+  billingStreet   String
+  billingCity     String
+  billingZip      String
+  billingCountry  String   @default("Deutschland")
+  email           String?
+  phone           String?
+  paymentTerms    Int      @default(30)
+  discountPercent Decimal  @default(0) @db.Decimal(5, 2)
+  notes           String?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  contacts      CustomerContact[]
+  deliveryAddresses DeliveryAddress[]
+  bookings      Booking[]
+  events        Event[]
+  damageReports DamageReport[]
+  customPrices  CustomerProductPrice[]
+  documents     CustomerDocument[]
+
+  @@index([customerNumber])
+  @@index([companyName])
+}
+
+model CustomerContact {
+  id         String  @id @default(cuid())
+  customerId String
+  firstName  String
+  lastName   String
+  email      String?
+  phone      String?
+  position   String?
+  isPrimary  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model DeliveryAddress {
+  id         String  @id @default(cuid())
+  customerId String
+  label      String
+  street     String
+  city       String
+  zip        String
+  country    String  @default("Deutschland")
+  isDefault  Boolean @default(false)
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+}
+
+model CustomerDocument {
+  id         String       @id @default(cuid())
+  customerId String
+  name       String
+  url        String
+  type       DocumentType @default(SONSTIGES)
+  createdAt  DateTime     @default(now())
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+}
+
+model CustomerProductPrice {
+  id              String  @id @default(cuid())
+  customerId      String
+  productId       String
+  dailyRateCents  Int?
+  weeklyRateCents Int?
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([customerId, productId])
+}
+
+// ==================== PRODUKTE ====================
+
+model ProductCategory {
+  id          String    @id @default(cuid())
+  name        String    @unique
+  description String?
+  sortOrder   Int       @default(0)
+  products    Product[]
+}
+
+model Product {
+  id                  String           @id @default(cuid())
+  name                String
+  model               String
+  categoryId          String
+  manufacturer        String           @default("Darda GmbH")
+  inventoryNumber     String           @unique
+  serialNumber        String           @unique
+  qrCode              String           @unique
+  barcode             String?
+  description         String?
+  weightKg            Decimal?         @db.Decimal(10, 2)
+  dimensions          String?
+  yearBuilt           Int?
+  purchaseDate        DateTime?
+  purchaseValueCents  Int?
+  replacementValueCents Int?
+  dailyRateCents      Int              @default(0)
+  weeklyRateCents     Int?
+  internalCostCents   Int?
+  depositCents        Int?
+  status              ProductStatus    @default(VERFUEGBAR)
+  condition           ProductCondition @default(GUT)
+  locationId          String?
+  responsibleUserId   String?
+  operatingHours      Int?
+  lastUsedAt          DateTime?
+  nextBookingAt       DateTime?
+  lastMaintenanceAt   DateTime?
+  nextMaintenanceAt   DateTime?
+  notes               String?
+  isArchived          Boolean          @default(false)
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  category           ProductCategory      @relation(fields: [categoryId], references: [id])
+  location             Location?            @relation(fields: [locationId], references: [id])
+  images               ProductImage[]
+  documents            ProductDocument[]
+  accessories          ProductAccessory[]
+  compatibleWith       ProductCompatibility[] @relation("ProductA")
+  compatibleProducts   ProductCompatibility[] @relation("ProductB")
+  bookingItems         BookingItem[]
+  eventProducts        EventProduct[]
+  damageReports        DamageReport[]
+  maintenanceRecords   Maintenance[]
+  locationHistory      LocationHistory[]
+  statusHistory        StatusHistory[]
+  customerPrices       CustomerProductPrice[]
+  conditionReports     ConditionReport[]
+
+  @@index([inventoryNumber])
+  @@index([serialNumber])
+  @@index([qrCode])
+  @@index([status])
+  @@index([categoryId])
+  @@index([locationId])
+}
+
+model ProductImage {
+  id        String  @id @default(cuid())
+  productId String
+  url       String
+  caption   String?
+  isPrimary Boolean @default(false)
+  sortOrder Int     @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+}
+
+model ProductDocument {
+  id        String       @id @default(cuid())
+  productId String
+  name      String
+  url       String
+  type      DocumentType @default(SONSTIGES)
+  createdAt DateTime     @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model Accessory {
+  id              String  @id @default(cuid())
+  name            String
+  description     String?
+  inventoryNumber String? @unique
+  quantity        Int     @default(1)
+  isActive        Boolean @default(true)
+
+  products         ProductAccessory[]
+  bookingAccessories BookingAccessory[]
+}
+
+model ProductAccessory {
+  id          String @id @default(cuid())
+  productId   String
+  accessoryId String
+  quantity    Int    @default(1)
+  isRequired  Boolean @default(true)
+
+  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  accessory Accessory @relation(fields: [accessoryId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, accessoryId])
+}
+
+model ProductCompatibility {
+  id        String @id @default(cuid())
+  productAId String
+  productBId String
+
+  productA Product @relation("ProductA", fields: [productAId], references: [id], onDelete: Cascade)
+  productB Product @relation("ProductB", fields: [productBId], references: [id], onDelete: Cascade)
+
+  @@unique([productAId, productBId])
+}
+
+// ==================== STANDORTE ====================
+
+model Location {
+  id        String       @id @default(cuid())
+  name      String
+  type      LocationType
+  street    String?
+  city      String?
+  zip       String?
+  country   String       @default("Deutschland")
+  notes     String?
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+
+  products        Product[]
+  locationHistory LocationHistory[]
+  bookingsPickup  Booking[] @relation("PickupLocation")
+  bookingsDelivery Booking[] @relation("DeliveryLocation")
+
+  @@index([type])
+}
+
+model LocationHistory {
+  id              String   @id @default(cuid())
+  productId       String
+  fromLocationId  String?
+  toLocationId    String
+  changedAt       DateTime @default(now())
+  changedByUserId String?
+  bookingId       String?
+  note            String?
+
+  product      Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  toLocation   Location  @relation(fields: [toLocationId], references: [id])
+  changedBy    User?     @relation(fields: [changedByUserId], references: [id])
+  booking      Booking?  @relation(fields: [bookingId], references: [id])
+
+  @@index([productId])
+  @@index([changedAt])
+}
+
+// ==================== BUCHUNGEN ====================
+
+model Booking {
+  id                    String         @id @default(cuid())
+  bookingNumber         String         @unique
+  type                  BookingType
+  status                BookingStatus  @default(ENTWURF)
+  customerId            String?
+  contactName           String?
+  projectName           String?
+  eventId               String?
+  responsibleUserId     String?
+  pickupLocationId      String?
+  deliveryLocationId    String?
+  deliveryAddress       String?
+  startDate             DateTime
+  startTime             String?
+  plannedReturnDate     DateTime
+  plannedReturnTime     String?
+  actualCheckoutAt      DateTime?
+  actualReturnAt        DateTime?
+  prepDaysBefore        Int            @default(0)
+  prepDaysAfter         Int            @default(0)
+  shipmentMethod        ShipmentMethod?
+  carrier               String?
+  trackingNumber        String?
+  rentalCostCents       Int            @default(0)
+  transportCostCents    Int            @default(0)
+  additionalCostCents   Int            @default(0)
+  discountCents         Int            @default(0)
+  depositCents          Int            @default(0)
+  totalCostCents        Int            @default(0)
+  internalCostCents     Int            @default(0)
+  notes                 String?
+  isArchived            Boolean        @default(false)
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  customer          Customer?  @relation(fields: [customerId], references: [id])
+  event             Event?     @relation(fields: [eventId], references: [id])
+  responsibleUser   User?      @relation("BookingResponsible", fields: [responsibleUserId], references: [id])
+  pickupLocation    Location?  @relation("PickupLocation", fields: [pickupLocationId], references: [id])
+  deliveryLocation  Location?  @relation("DeliveryLocation", fields: [deliveryLocationId], references: [id])
+  items             BookingItem[]
+  accessories       BookingAccessory[]
+  documents         BookingDocument[]
+  checkOuts         CheckOut[]
+  checkIns          CheckIn[]
+  damageReports     DamageReport[]
+  locationHistory   LocationHistory[]
+  costs             Cost[]
+
+  @@index([bookingNumber])
+  @@index([status])
+  @@index([type])
+  @@index([startDate, plannedReturnDate])
+  @@index([customerId])
+}
+
+model BookingItem {
+  id        String @id @default(cuid())
+  bookingId String
+  productId String
+  quantity  Int    @default(1)
+  dailyRateCents Int?
+  notes     String?
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([bookingId, productId])
+  @@index([productId])
+  @@index([bookingId])
+}
+
+model BookingAccessory {
+  id          String @id @default(cuid())
+  bookingId   String
+  accessoryId String
+  quantity    Int    @default(1)
+  isReturned  Boolean @default(false)
+
+  booking   Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  accessory Accessory @relation(fields: [accessoryId], references: [id])
+
+  @@index([bookingId])
+}
+
+model BookingDocument {
+  id        String       @id @default(cuid())
+  bookingId String
+  name      String
+  url       String
+  type      DocumentType @default(SONSTIGES)
+  createdAt DateTime     @default(now())
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+}
+
+// ==================== VERANSTALTUNGEN ====================
+
+model Event {
+  id                  String      @id @default(cuid())
+  name                String
+  type                EventType
+  status              EventStatus @default(GEPLANT)
+  customerId          String?
+  venue               String?
+  street              String?
+  city                String?
+  zip                 String?
+  setupStartDate      DateTime?
+  setupEndDate        DateTime?
+  eventStartDate      DateTime
+  eventEndDate        DateTime
+  teardownStartDate   DateTime?
+  teardownEndDate     DateTime?
+  responsibleUserId   String?
+  transportNotes      String?
+  carrier             String?
+  hotelInfo           String?
+  budgetCents         Int?
+  actualCostCents     Int?
+  contactOnSite       String?
+  contactPhone        String?
+  notes               String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  customer        Customer?          @relation(fields: [customerId], references: [id])
+  responsibleUser User?              @relation("EventResponsible", fields: [responsibleUserId], references: [id])
+  participants    EventParticipant[]
+  products        EventProduct[]
+  checklist       EventChecklist?
+  bookings        Booking[]
+  documents       EventDocument[]
+  costs           Cost[]
+
+  @@index([eventStartDate, eventEndDate])
+  @@index([status])
+}
+
+model EventParticipant {
+  id      String @id @default(cuid())
+  eventId String
+  userId  String
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+}
+
+model EventProduct {
+  id        String @id @default(cuid())
+  eventId   String
+  productId String
+  notes     String?
+
+  event   Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([eventId, productId])
+}
+
+model EventChecklist {
+  id                String  @id @default(cuid())
+  eventId           String  @unique
+  productsReserved  Boolean @default(false)
+  accessoriesComplete Boolean @default(false)
+  productChecked    Boolean @default(false)
+  transportOrganized Boolean @default(false)
+  documentsReady    Boolean @default(false)
+  productsLoaded    Boolean @default(false)
+  returnPlanned     Boolean @default(false)
+  returnCompleted   Boolean @default(false)
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model EventDocument {
+  id        String       @id @default(cuid())
+  eventId   String
+  name      String
+  url       String
+  type      DocumentType @default(SONSTIGES)
+  createdAt DateTime     @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+// ==================== AUSGABE / RÜCKGABE ====================
+
+model CheckOut {
+  id              String   @id @default(cuid())
+  bookingId       String
+  checkedOutById  String
+  checkedOutAt    DateTime @default(now())
+  recipientName   String?
+  recipientSigned Boolean  @default(false)
+  notes           String?
+  operatingHours  Int?
+
+  booking      Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  checkedOutBy User              @relation(fields: [checkedOutById], references: [id])
+  items        CheckOutItem[]
+  conditionReports ConditionReport[] @relation("CheckOutReports")
+}
+
+model CheckOutItem {
+  id           String           @id @default(cuid())
+  checkOutId   String
+  productId    String
+  condition    ProductCondition
+  serialVerified Boolean        @default(false)
+  accessoriesChecked Boolean    @default(false)
+  notes        String?
+
+  checkOut CheckOut @relation(fields: [checkOutId], references: [id], onDelete: Cascade)
+}
+
+model CheckIn {
+  id             String   @id @default(cuid())
+  bookingId      String
+  checkedInById  String
+  checkedInAt    DateTime @default(now())
+  cleaningCostCents Int   @default(0)
+  repairCostCents   Int   @default(0)
+  notes          String?
+
+  booking     Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  checkedInBy User              @relation(fields: [checkedInById], references: [id])
+  items       CheckInItem[]
+  conditionReports ConditionReport[] @relation("CheckInReports")
+}
+
+model CheckInItem {
+  id                String           @id @default(cuid())
+  checkInId         String
+  productId         String
+  condition         ProductCondition
+  missingAccessories String?
+  damageNoted       Boolean          @default(false)
+  notes             String?
+
+  checkIn CheckIn @relation(fields: [checkInId], references: [id], onDelete: Cascade)
+}
+
+model ConditionReport {
+  id          String           @id @default(cuid())
+  productId   String
+  condition   ProductCondition
+  notes       String?
+  checkOutId  String?
+  checkInId   String?
+  createdAt   DateTime         @default(now())
+
+  product  Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  checkOut CheckOut? @relation("CheckOutReports", fields: [checkOutId], references: [id])
+  checkIn  CheckIn?  @relation("CheckInReports", fields: [checkInId], references: [id])
+  images   ConditionReportImage[]
+}
+
+model ConditionReportImage {
+  id                String @id @default(cuid())
+  conditionReportId String
+  url               String
+  caption           String?
+
+  conditionReport ConditionReport @relation(fields: [conditionReportId], references: [id], onDelete: Cascade)
+}
+
+// ==================== SCHÄDEN ====================
+
+model DamageReport {
+  id                    String         @id @default(cuid())
+  damageNumber          String         @unique
+  productId             String
+  bookingId             String?
+  customerId            String?
+  reportedAt            DateTime       @default(now())
+  reportedById          String
+  category              DamageCategory
+  affectedPart          String?
+  description           String
+  severity              DamageSeverity
+  repairRequired        Boolean        @default(false)
+  stillUsable           Boolean        @default(false)
+  estimatedCostCents    Int?
+  actualCostCents       Int?
+  responsibility        String?
+  isInsuranceCase       Boolean        @default(false)
+  customerChargeCents   Int?
+  status                DamageStatus   @default(NEU)
+  notes                 String?
+  markerX               Float?
+  markerY               Float?
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
+
+  product    Product  @relation(fields: [productId], references: [id])
+  booking    Booking? @relation(fields: [bookingId], references: [id])
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  reportedBy User     @relation("DamageReporter", fields: [reportedById], references: [id])
+  images     DamageImage[]
+  history    DamageStatusHistory[]
+
+  @@index([damageNumber])
+  @@index([productId])
+  @@index([status])
+}
+
+model DamageImage {
+  id             String @id @default(cuid())
+  damageReportId String
+  url            String
+  caption        String?
+
+  damageReport DamageReport @relation(fields: [damageReportId], references: [id], onDelete: Cascade)
+}
+
+model DamageStatusHistory {
+  id             String       @id @default(cuid())
+  damageReportId String
+  fromStatus     DamageStatus?
+  toStatus       DamageStatus
+  changedAt      DateTime     @default(now())
+  note           String?
+
+  damageReport DamageReport @relation(fields: [damageReportId], references: [id], onDelete: Cascade)
+}
+
+// ==================== WARTUNG ====================
+
+model Maintenance {
+  id                String            @id @default(cuid())
+  productId         String
+  type              MaintenanceType
+  status            MaintenanceStatus @default(GEPLANT)
+  intervalDays      Int?
+  lastDate          DateTime?
+  nextDate          DateTime?
+  operatingHours    Int?
+  serviceProvider   String?
+  costCents         Int?
+  result            String?
+  reportUrl         String?
+  performedById     String?
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  performedBy User?   @relation(fields: [performedById], references: [id])
+  documents   MaintenanceDocument[]
+
+  @@index([productId])
+  @@index([nextDate])
+  @@index([status])
+}
+
+model MaintenanceDocument {
+  id            String @id @default(cuid())
+  maintenanceId String
+  name          String
+  url           String
+
+  maintenance Maintenance @relation(fields: [maintenanceId], references: [id], onDelete: Cascade)
+}
+
+// ==================== KOSTEN ====================
+
+model Cost {
+  id          String   @id @default(cuid())
+  type        CostType
+  amountCents Int
+  description String?
+  bookingId   String?
+  eventId     String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  booking Booking? @relation(fields: [bookingId], references: [id])
+  event   Event?   @relation(fields: [eventId], references: [id])
+
+  @@index([type])
+  @@index([date])
+}
+
+// ==================== BENACHRICHTIGUNGEN ====================
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([createdAt])
+}
+
+// ==================== AUDIT LOG ====================
+
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  action     AuditAction
+  entityType String
+  entityId   String
+  oldValue   Json?
+  newValue   Json?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+// ==================== STATUS HISTORIE ====================
+
+model StatusHistory {
+  id         String        @id @default(cuid())
+  productId  String
+  fromStatus ProductStatus?
+  toStatus   ProductStatus
+  changedAt  DateTime      @default(now())
+  changedById String?
+  note       String?
+
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  changedBy User?   @relation(fields: [changedById], references: [id])
+
+  @@index([productId])
+  @@index([changedAt])
+}
