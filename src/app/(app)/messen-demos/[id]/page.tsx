@@ -34,7 +34,18 @@ export default async function EventDetailPage({
 
   return (
     <div>
-      <PageHeader title={event.name} description={eventTypeLabels[event.type]} backHref="/messen-demos">
+      <PageHeader
+        title={event.name}
+        description={eventTypeLabels[event.type]}
+        backHref="/messen-demos"
+        actions={[
+          {
+            label: "Bearbeiten",
+            href: `/messen-demos/${event.id}/bearbeiten`,
+            variant: "outline",
+          },
+        ]}
+      >
         <Badge>{eventStatusLabels[event.status]}</Badge>
       </PageHeader>
 
@@ -59,6 +70,14 @@ export default async function EventDetailPage({
                     <dd>{event.venue ?? "—"}</dd>
                   </div>
                   <div>
+                    <dt className="text-gray-500">Adresse</dt>
+                    <dd>
+                      {[event.street, [event.zip, event.city].filter(Boolean).join(" ")]
+                        .filter(Boolean)
+                        .join(", ") || "—"}
+                    </dd>
+                  </div>
+                  <div>
                     <dt className="text-gray-500">Kunde</dt>
                     <dd>
                       {event.customer ? (
@@ -76,9 +95,31 @@ export default async function EventDetailPage({
                       {formatDate(event.eventStartDate)} – {formatDate(event.eventEndDate)}
                     </dd>
                   </div>
+                  {(event.setupStartDate || event.setupEndDate) && (
+                    <div>
+                      <dt className="text-gray-500">Aufbau</dt>
+                      <dd>
+                        {event.setupStartDate ? formatDate(event.setupStartDate) : "—"} –{" "}
+                        {event.setupEndDate ? formatDate(event.setupEndDate) : "—"}
+                      </dd>
+                    </div>
+                  )}
+                  {(event.teardownStartDate || event.teardownEndDate) && (
+                    <div>
+                      <dt className="text-gray-500">Abbau</dt>
+                      <dd>
+                        {event.teardownStartDate ? formatDate(event.teardownStartDate) : "—"} –{" "}
+                        {event.teardownEndDate ? formatDate(event.teardownEndDate) : "—"}
+                      </dd>
+                    </div>
+                  )}
                   <div>
                     <dt className="text-gray-500">Ansprechpartner vor Ort</dt>
                     <dd>{event.contactOnSite ?? "—"}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Telefon vor Ort</dt>
+                    <dd>{event.contactPhone ?? "—"}</dd>
                   </div>
                 </dl>
               </CardContent>
@@ -87,9 +128,11 @@ export default async function EventDetailPage({
               <CardHeader>
                 <CardTitle className="text-base">Logistik</CardTitle>
               </CardHeader>
-              <CardContent className="text-sm">
+              <CardContent className="text-sm space-y-2">
                 <p>{event.transportNotes ?? "Keine Transportnotizen"}</p>
-                {event.carrier && <p className="mt-2 text-gray-500">Spediteur: {event.carrier}</p>}
+                {event.carrier && <p className="text-gray-500">Spediteur: {event.carrier}</p>}
+                {event.hotelInfo && <p className="text-gray-500">Hotel: {event.hotelInfo}</p>}
+                {event.notes && <p className="text-gray-500">Notizen: {event.notes}</p>}
               </CardContent>
             </Card>
           </div>

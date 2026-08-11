@@ -1,7 +1,37 @@
 "use server";
 
-import { prisma } from "@/lib/prisma";
+import { ProductStatus } from "@prisma/client";
 import { subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { prisma } from "@/lib/prisma";
+import { productStatusLabels } from "@/lib/labels";
+
+/** Statuses that mean the product is currently out of the main warehouse */
+const OUT_OF_HOUSE_STATUSES: ProductStatus[] = [
+  "UNTERWEGS",
+  "BEIM_KUNDEN",
+  "AUF_MESSE",
+  "BEI_DEMO",
+  "INTERN_IM_EINSATZ",
+  "RUECKGABE_AUSSTEHEND",
+];
+
+function utilizationLabel(
+  status: ProductStatus,
+  locationType: string | null | undefined
+): string {
+  if (OUT_OF_HOUSE_STATUSES.includes(status)) {
+    return "Außer Haus";
+  }
+  // Stock at Außenlager / partner sites counts as out of house even if still "available" there
+  if (
+    (status === "VERFUEGBAR" || status === "RESERVIERT") &&
+    locationType &&
+    locationType !== "HAUPTLAGER"
+  ) {
+    return "Außer Haus";
+  }
+  return productStatusLabels[status];
+}
 
 export async function getReportData() {
   const now = new Date();
@@ -26,10 +56,23 @@ export async function getReportData() {
     _sum: { actualCostCents: true },
   });
 
-  const utilization = await prisma.product.groupBy({
-    by: ["status"],
-    _count: true,
+  const products = await prisma.product.findMany({
+    where: { isArchived: false },
+    select: {
+      status: true,
+      location: { select: { type: true } },
+    },
   });
+
+  const utilizationCounts = new Map<string, number>();
+  for (const product of products) {
+    const label = utilizationLabel(product.status, product.location?.type);
+    utilizationCounts.set(label, (utilizationCounts.get(label) ?? 0) + 1);
+  }
+
+  const utilization = Array.from(utilizationCounts.entries())
+    .map(([status, _count]) => ({ status, _count }))
+    .sort((a, b) => b._count - a._count);
 
   const monthlyRevenue: { month: string; revenue: number; bookings: number }[] = [];
   for (let i = 5; i >= 0; i--) {

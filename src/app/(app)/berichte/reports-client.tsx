@@ -37,7 +37,7 @@ export function ReportsClient({ monthlyRevenue, damages, utilization }: ReportsC
   }));
 
   const utilizationData = utilization.map((u) => ({
-    name: u.status.replace(/_/g, " "),
+    name: u.status,
     value: u._count,
   }));
 

@@ -29,29 +29,36 @@ const eventFiltersSchema = z.object({
   toDate: z.coerce.date().optional(),
 });
 
+const optionalDateField = z.preprocess(
+  (val) => (val === "" || val === undefined ? undefined : val),
+  z.union([z.coerce.date(), z.null()]).optional()
+);
+
+const optionalStringField = z.union([z.string(), z.null()]).optional();
+
 const createEventBaseSchema = z.object({
   name: z.string().min(1, "Name ist erforderlich"),
   type: z.nativeEnum(EventType),
   status: z.nativeEnum(EventStatus).default("GEPLANT"),
-  customerId: z.string().optional(),
-  venue: z.string().optional(),
-  street: z.string().optional(),
-  city: z.string().optional(),
-  zip: z.string().optional(),
-  setupStartDate: z.coerce.date().optional(),
-  setupEndDate: z.coerce.date().optional(),
+  customerId: optionalStringField,
+  venue: optionalStringField,
+  street: optionalStringField,
+  city: optionalStringField,
+  zip: optionalStringField,
+  setupStartDate: optionalDateField,
+  setupEndDate: optionalDateField,
   eventStartDate: z.coerce.date(),
   eventEndDate: z.coerce.date(),
-  teardownStartDate: z.coerce.date().optional(),
-  teardownEndDate: z.coerce.date().optional(),
-  responsibleUserId: z.string().optional(),
-  transportNotes: z.string().optional(),
-  carrier: z.string().optional(),
-  hotelInfo: z.string().optional(),
-  budgetCents: z.number().int().min(0).optional(),
-  contactOnSite: z.string().optional(),
-  contactPhone: z.string().optional(),
-  notes: z.string().optional(),
+  teardownStartDate: optionalDateField,
+  teardownEndDate: optionalDateField,
+  responsibleUserId: optionalStringField,
+  transportNotes: optionalStringField,
+  carrier: optionalStringField,
+  hotelInfo: optionalStringField,
+  budgetCents: z.union([z.number().int().min(0), z.null()]).optional(),
+  contactOnSite: optionalStringField,
+  contactPhone: optionalStringField,
+  notes: optionalStringField,
   productIds: z.array(z.string()).optional(),
   participantIds: z.array(z.string()).optional(),
 });
@@ -64,7 +71,18 @@ const createEventSchema = createEventBaseSchema.refine(
   }
 );
 
-const updateEventSchema = createEventBaseSchema.partial();
+const updateEventSchema = createEventBaseSchema.partial().refine(
+  (data) => {
+    if (data.eventStartDate && data.eventEndDate) {
+      return data.eventEndDate >= data.eventStartDate;
+    }
+    return true;
+  },
+  {
+    message: "Enddatum muss nach dem Startdatum liegen",
+    path: ["eventEndDate"],
+  }
+);
 
 const toggleChecklistSchema = z.object({
   eventId: z.string().min(1, "Veranstaltungs-ID ist erforderlich"),
