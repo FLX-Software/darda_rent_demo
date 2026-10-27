@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { bookingStatusLabels, bookingTypeLabels } from "@/lib/labels";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import { Mail, MapPin, Phone, User } from "lucide-react";
+import { Mail, MapPin, Pencil, Phone, User } from "lucide-react";
 
 export default async function CustomerDetailPage({
   params,
@@ -25,6 +25,14 @@ export default async function CustomerDetailPage({
         title={customer.companyName}
         description={`Kundennr. ${customer.customerNumber}`}
         backHref="/kunden"
+        actions={[
+          {
+            label: "Bearbeiten",
+            href: `/kunden/${customer.id}/bearbeiten`,
+            variant: "outline",
+            icon: <Pencil className="mr-2 h-4 w-4" />,
+          },
+        ]}
       >
         <Badge variant={customer.isActive ? "default" : "secondary"}>
           {customer.isActive ? "Aktiv" : "Inaktiv"}

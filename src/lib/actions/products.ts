@@ -6,7 +6,7 @@ import { ProductCondition, ProductStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
 import { requireAuth } from "@/lib/session";
-import { generateQrCodeValue } from "@/lib/utils";
+import { generateQrCodeValue, serializeForClient, toPlainNumber } from "@/lib/utils";
 import { saveFile } from "@/lib/storage";
 import { resolveProductDisplayBookingType, visibleProductBookingTypes } from "@/lib/labels";
 import { actionError, actionSuccess, getValidationError } from "./types";
@@ -101,13 +101,14 @@ export async function getProducts(filters?: z.infer<typeof productFiltersSchema>
 
     const productsWithDisplayType = products.map(({ bookingItems, ...product }) => ({
       ...product,
+      weightKg: toPlainNumber(product.weightKg),
       displayBookingType: resolveProductDisplayBookingType(
         product.status,
         bookingItems[0]?.booking.type ?? null
       ),
     }));
 
-    return actionSuccess(productsWithDisplayType);
+    return actionSuccess(serializeForClient(productsWithDisplayType));
   } catch {
     return actionError("Produkte konnten nicht geladen werden");
   }
@@ -138,7 +139,12 @@ export async function getProduct(id: string) {
       return actionError("Produkt nicht gefunden");
     }
 
-    return actionSuccess(product);
+    return actionSuccess(
+      serializeForClient({
+        ...product,
+        weightKg: toPlainNumber(product.weightKg),
+      })
+    );
   } catch {
     return actionError("Produkt konnte nicht geladen werden");
   }
@@ -197,6 +203,13 @@ export async function createProductFromForm(formData: FormData) {
     const user = await requireAuth();
 
     const dailyRate = parseFloat(formData.get("dailyRate")?.toString() ?? "0");
+    const weightRaw = formData.get("weightKg")?.toString().trim();
+    const yearRaw = formData.get("yearBuilt")?.toString().trim();
+    const dimensionsRaw = formData.get("dimensions")?.toString().trim();
+
+    const weightKg = weightRaw ? Number.parseFloat(weightRaw.replace(",", ".")) : undefined;
+    const yearBuilt = yearRaw ? Number.parseInt(yearRaw, 10) : undefined;
+
     const input = {
       name: formData.get("name")?.toString() ?? "",
       model: formData.get("model")?.toString() ?? "",
@@ -207,6 +220,9 @@ export async function createProductFromForm(formData: FormData) {
       description: formData.get("description")?.toString() || undefined,
       locationId: formData.get("locationId")?.toString() || undefined,
       condition: (formData.get("condition")?.toString() as ProductCondition) || undefined,
+      weightKg: Number.isFinite(weightKg) && (weightKg as number) > 0 ? weightKg : undefined,
+      yearBuilt: Number.isFinite(yearBuilt) ? yearBuilt : undefined,
+      dimensions: dimensionsRaw || undefined,
     };
 
     const parsed = createProductSchema.safeParse(input);
@@ -276,6 +292,49 @@ export async function createProductFromForm(formData: FormData) {
   }
 }
 
+function parseOptionalWeightKg(raw: string | undefined): number | null | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const value = Number.parseFloat(trimmed.replace(",", "."));
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function parseOptionalYearBuilt(raw: string | undefined): number | null | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const value = Number.parseInt(trimmed, 10);
+  return Number.isFinite(value) ? value : null;
+}
+
+async function savePrimaryProductImage(productId: string, imageFile: File, caption?: string) {
+  const allowed = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+  if (!allowed.includes(imageFile.type)) {
+    return actionError("Nur JPG, PNG, WebP oder GIF erlaubt");
+  }
+  if (imageFile.size > 10 * 1024 * 1024) {
+    return actionError("Bild darf maximal 10 MB groß sein");
+  }
+
+  const { url } = await saveFile(imageFile, "products");
+  await prisma.productImage.updateMany({
+    where: { productId },
+    data: { isPrimary: false },
+  });
+  const imageCount = await prisma.productImage.count({ where: { productId } });
+  await prisma.productImage.create({
+    data: {
+      productId,
+      url,
+      isPrimary: true,
+      sortOrder: imageCount,
+      caption,
+    },
+  });
+  return actionSuccess(true);
+}
+
 export async function updateProduct(id: string, input: z.infer<typeof updateProductSchema>) {
   try {
     const user = await requireAuth();
@@ -326,6 +385,117 @@ export async function updateProduct(id: string, input: z.infer<typeof updateProd
       data: updateData,
       include: { category: true, location: true, images: true },
     });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Product",
+      entityId: product.id,
+      oldValue: existing,
+      newValue: product,
+    });
+
+    revalidatePath("/produkte");
+    revalidatePath(`/produkte/${id}`);
+    return actionSuccess(product);
+  } catch {
+    return actionError("Produkt konnte nicht aktualisiert werden");
+  }
+}
+
+export async function updateProductFromForm(id: string, formData: FormData) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Produkt-ID ist erforderlich");
+    }
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      return actionError("Produkt nicht gefunden");
+    }
+
+    const dailyRate = parseFloat(formData.get("dailyRate")?.toString() ?? "0");
+    const weightKg = parseOptionalWeightKg(formData.get("weightKg")?.toString());
+    const yearBuilt = parseOptionalYearBuilt(formData.get("yearBuilt")?.toString());
+    const dimensionsRaw = formData.get("dimensions")?.toString().trim() ?? "";
+    const descriptionRaw = formData.get("description")?.toString().trim() ?? "";
+    const locationIdRaw = formData.get("locationId")?.toString().trim() ?? "";
+
+    const input = {
+      name: formData.get("name")?.toString() ?? "",
+      model: formData.get("model")?.toString() ?? "",
+      categoryId: formData.get("categoryId")?.toString() ?? "",
+      inventoryNumber: formData.get("inventoryNumber")?.toString() ?? "",
+      serialNumber: formData.get("serialNumber")?.toString() ?? "",
+      dailyRateCents: Math.round(dailyRate * 100),
+      description: descriptionRaw || null,
+      locationId: locationIdRaw || null,
+      condition: (formData.get("condition")?.toString() as ProductCondition) || undefined,
+      weightKg: weightKg === undefined ? undefined : weightKg,
+      yearBuilt: yearBuilt === undefined ? undefined : yearBuilt,
+      dimensions: dimensionsRaw || null,
+    };
+
+    const parsed = createProductSchema
+      .extend({
+        weightKg: z.number().positive().nullable().optional(),
+        yearBuilt: z.number().int().nullable().optional(),
+        dimensions: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        locationId: z.string().nullable().optional(),
+      })
+      .safeParse(input);
+
+    if (!parsed.success) {
+      return actionError(getValidationError(parsed.error));
+    }
+
+    const data = parsed.data;
+
+    const duplicate = await prisma.product.findFirst({
+      where: {
+        id: { not: id },
+        OR: [
+          { inventoryNumber: data.inventoryNumber },
+          { serialNumber: data.serialNumber },
+        ],
+      },
+    });
+
+    if (duplicate) {
+      return actionError("Inventarnummer oder Seriennummer bereits vergeben");
+    }
+
+    const product = await prisma.product.update({
+      where: { id },
+      data: {
+        name: data.name,
+        model: data.model,
+        categoryId: data.categoryId,
+        inventoryNumber: data.inventoryNumber,
+        serialNumber: data.serialNumber,
+        dailyRateCents: data.dailyRateCents,
+        description: data.description,
+        locationId: data.locationId,
+        condition: data.condition,
+        weightKg: data.weightKg,
+        yearBuilt: data.yearBuilt,
+        dimensions: data.dimensions,
+        qrCode: generateQrCodeValue(data.inventoryNumber),
+        manufacturer: data.manufacturer ?? existing.manufacturer,
+      },
+      include: { category: true, location: true, images: true },
+    });
+
+    const imageFile = formData.get("image");
+    if (imageFile && imageFile instanceof File && imageFile.size > 0) {
+      const imageResult = await savePrimaryProductImage(id, imageFile, product.name);
+      if (!imageResult.success) {
+        return actionError(imageResult.error ?? "Produktbild konnte nicht gespeichert werden");
+      }
+    }
 
     await createAuditLog({
       userId: user.id,
@@ -433,6 +603,51 @@ export async function uploadProductImage(productId: string, formData: FormData) 
     return actionSuccess(image);
   } catch {
     return actionError("Produktbild konnte nicht hochgeladen werden");
+  }
+}
+
+const createCategorySchema = z.object({
+  name: z.string().min(1, "Name ist erforderlich"),
+  description: z.string().optional(),
+  sortOrder: z.number().int().optional(),
+});
+
+export async function createProductCategory(input: z.infer<typeof createCategorySchema>) {
+  try {
+    const user = await requireAuth();
+    const parsed = createCategorySchema.safeParse(input);
+    if (!parsed.success) {
+      return actionError(getValidationError(parsed.error));
+    }
+
+    const existing = await prisma.productCategory.findFirst({
+      where: { name: parsed.data.name },
+    });
+    if (existing) {
+      return actionError("Kategorie existiert bereits");
+    }
+
+    const maxSort = await prisma.productCategory.aggregate({ _max: { sortOrder: true } });
+    const category = await prisma.productCategory.create({
+      data: {
+        name: parsed.data.name,
+        description: parsed.data.description,
+        sortOrder: parsed.data.sortOrder ?? (maxSort._max.sortOrder ?? 0) + 1,
+      },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "CREATE",
+      entityType: "ProductCategory",
+      entityId: category.id,
+      newValue: category,
+    });
+
+    revalidatePath("/produkte");
+    return actionSuccess(category);
+  } catch {
+    return actionError("Kategorie konnte nicht erstellt werden");
   }
 }
 

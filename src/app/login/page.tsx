@@ -3,11 +3,10 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,13 +37,16 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-flx-navy to-flx-navy-light p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-flx-blue-light">
-            <Image src="/flx-logo.svg" alt="FLX Rent" width={40} height={40} />
-          </div>
-          <CardTitle className="text-2xl text-flx-navy">FLX Rent</CardTitle>
-          <p className="text-sm text-gray-500">Werkzeug- & Produktverwaltung · Darda GmbH</p>
+      <Card className="w-full max-w-md overflow-hidden">
+        <div className="flex justify-center rounded-t-lg bg-gradient-to-br from-flx-navy to-flx-navy-light px-6 pb-2 pt-8">
+          <img
+            src="/flx-rent-logo.png?v=6"
+            alt="FLX Software Logo"
+            className="h-auto w-full max-w-[300px] mix-blend-screen"
+          />
+        </div>
+        <CardHeader className="pt-4 text-center">
+          <p className="text-sm text-gray-500">Miet- und Demopark · Darda GmbH</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

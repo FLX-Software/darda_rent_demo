@@ -5,6 +5,37 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/** Prisma Decimal / ähnliche Werte für Client Components serialisieren */
+export function toPlainNumber(value: unknown): number | null {
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "object" && value !== null && "toNumber" in value) {
+    const n = (value as { toNumber: () => number }).toNumber();
+    return Number.isFinite(n) ? n : null;
+  }
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Wandelt Prisma-Ergebnisse (Decimal, Date, …) in reine JSON-Werte um,
+ * die an Client Components übergeben werden dürfen.
+ */
+export function serializeForClient<T>(value: T): T {
+  return JSON.parse(
+    JSON.stringify(value, (_key, current) => {
+      if (
+        current != null &&
+        typeof current === "object" &&
+        typeof (current as { toNumber?: unknown }).toNumber === "function"
+      ) {
+        return (current as { toNumber: () => number }).toNumber();
+      }
+      return current;
+    })
+  ) as T;
+}
+
 export function formatCurrency(cents: number): string {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",

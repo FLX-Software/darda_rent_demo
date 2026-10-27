@@ -149,7 +149,7 @@ export async function createMaintenance(input: z.infer<typeof createMaintenanceS
       newValue: maintenance,
     });
 
-    revalidatePath("/produkte");
+    revalidatePath("/wartungen");
     revalidatePath("/produkte");
     return actionSuccess(maintenance);
   } catch {
@@ -237,7 +237,7 @@ export async function updateMaintenance(
       newValue: maintenance,
     });
 
-    revalidatePath("/produkte");
+    revalidatePath("/wartungen");
     revalidatePath("/produkte");
     return actionSuccess(maintenance);
   } catch {

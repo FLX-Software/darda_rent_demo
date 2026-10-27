@@ -2,11 +2,37 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "./auth";
 import { redirect } from "next/navigation";
 import { UserRole } from "@prisma/client";
+import { prisma } from "./prisma";
 import { canAccessRoute, hasPermission, Permission } from "./permissions";
 
-export async function getCurrentUser() {
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  role: UserRole;
+};
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
   const session = await getServerSession(authOptions);
-  return session?.user ?? null;
+  const sessionUser = session?.user;
+  if (!sessionUser?.email) return null;
+
+  // Nach DB-Seed kann die JWT-ID veraltet sein – per E-Mail nachladen
+  const dbUser = await prisma.user.findFirst({
+    where: {
+      isActive: true,
+      OR: [{ id: sessionUser.id }, { email: sessionUser.email }],
+    },
+  });
+
+  if (!dbUser) return null;
+
+  return {
+    id: dbUser.id,
+    email: dbUser.email,
+    name: `${dbUser.firstName} ${dbUser.lastName}`,
+    role: dbUser.role,
+  };
 }
 
 export async function requireAuth() {

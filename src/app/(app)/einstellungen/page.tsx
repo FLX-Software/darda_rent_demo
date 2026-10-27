@@ -84,7 +84,7 @@ export default function EinstellungenPage() {
           <CardContent className="space-y-3 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500">Version</span>
-              <span>FLX Rent 1.0.0</span>
+              <span>FLX Software 1.0.0</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500">Datenbank</span>

@@ -10,19 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ProductStatusBadge } from "@/components/products/product-status-badge";
 import {
   maintenanceStatusLabels,
+  maintenanceTypeLabels,
   productConditionLabels,
   productStatusLabels,
 } from "@/lib/labels";
-
-const maintenanceTypeLabels: Record<string, string> = {
-  ROUTINE: "Routine-Wartung",
-  SICHERHEITSPRUEFUNG: "Sicherheitsprüfung",
-  INSPEKTION: "Inspektion",
-  REPARATUR: "Reparatur",
-  KALIBRIERUNG: "Kalibrierung",
-};
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { MapPin, Package, QrCode, Wrench } from "lucide-react";
+import { MapPin, Package, Pencil, QrCode, Wrench } from "lucide-react";
+import { ArchiveProductButton } from "@/components/products/archive-product-button";
 
 export default async function ProductDetailPage({
   params,
@@ -42,10 +36,19 @@ export default async function ProductDetailPage({
         description={`${product.model} · ${product.inventoryNumber}`}
         backHref="/produkte"
         actions={[
+          {
+            label: "Bearbeiten",
+            href: `/produkte/${product.id}/bearbeiten`,
+            variant: "outline",
+            icon: <Pencil className="mr-2 h-4 w-4" />,
+          },
           { label: "Neue Buchung", href: `/buchungen/neu?productId=${product.id}` },
         ]}
       >
         <ProductStatusBadge status={product.status} />
+        {!product.isArchived && (
+          <ArchiveProductButton productId={product.id} productName={product.name} />
+        )}
       </PageHeader>
 
       <Tabs defaultValue="info" className="space-y-4">
@@ -61,17 +64,17 @@ export default async function ProductDetailPage({
             <Card className="lg:col-span-1">
               <CardContent className="p-4">
                 {primaryImage ? (
-                  <div className="relative aspect-square overflow-hidden rounded-lg bg-gray-100">
+                  <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-gray-50">
                     <Image
                       src={primaryImage.url}
                       alt={primaryImage.caption ?? product.name}
                       fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, 300px"
+                      className="object-contain p-3"
+                      sizes="(max-width: 1024px) 100vw, 33vw"
                     />
                   </div>
                 ) : (
-                  <div className="flex aspect-square items-center justify-center rounded-lg bg-gray-100">
+                  <div className="flex aspect-square w-full items-center justify-center rounded-lg bg-gray-50">
                     <Package className="h-16 w-16 text-gray-300" />
                   </div>
                 )}
@@ -80,13 +83,13 @@ export default async function ProductDetailPage({
                     {product.images.slice(0, 4).map((img) => (
                       <div
                         key={img.id}
-                        className="relative aspect-square overflow-hidden rounded-md bg-gray-100"
+                        className="relative aspect-square overflow-hidden rounded-md bg-gray-50"
                       >
                         <Image
                           src={img.url}
                           alt={img.caption ?? ""}
                           fill
-                          className="object-cover"
+                          className="object-contain p-1"
                           sizes="80px"
                         />
                       </div>
@@ -129,7 +132,11 @@ export default async function ProductDetailPage({
                     </div>
                     <div>
                       <dt className="text-gray-500">Gewicht</dt>
-                      <dd>{product.weightKg ? `${product.weightKg} kg` : "—"}</dd>
+                      <dd>
+                        {product.weightKg != null
+                          ? `${Number(product.weightKg)} kg`
+                          : "—"}
+                      </dd>
                     </div>
                     <div>
                       <dt className="text-gray-500">Abmessungen</dt>

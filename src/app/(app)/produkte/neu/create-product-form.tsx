@@ -18,30 +18,59 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createProductFromForm } from "@/lib/actions/products";
+import { createProductFromForm, updateProductFromForm } from "@/lib/actions/products";
 import { productConditionLabels } from "@/lib/labels";
+import { CreateCategoryDialog } from "@/components/products/create-category-dialog";
+
+export type ProductFormValues = {
+  id: string;
+  name: string;
+  model: string;
+  inventoryNumber: string;
+  serialNumber: string;
+  categoryId: string;
+  locationId?: string | null;
+  condition: ProductCondition;
+  dailyRateCents: number;
+  yearBuilt?: number | null;
+  weightKg?: number | null;
+  dimensions?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+};
 
 interface CreateProductFormProps {
   categories: { id: string; name: string }[];
   locations: { id: string; name: string }[];
+  mode?: "create" | "edit";
+  initial?: ProductFormValues;
 }
 
-export function CreateProductForm({ categories, locations }: CreateProductFormProps) {
+export function CreateProductForm({
+  categories: initialCategories,
+  locations,
+  mode = "create",
+  initial,
+}: CreateProductFormProps) {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isEdit = mode === "edit" && !!initial;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [locationId, setLocationId] = useState("");
-  const [condition, setCondition] = useState<ProductCondition>("GUT");
+  const [categories, setCategories] = useState(initialCategories);
+  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
+  const [locationId, setLocationId] = useState(initial?.locationId ?? "");
+  const [condition, setCondition] = useState<ProductCondition>(initial?.condition ?? "GUT");
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(initial?.imageUrl ?? null);
 
   const handleImageChange = (file: File | null) => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview);
+    if (imagePreview && imagePreview.startsWith("blob:")) {
+      URL.revokeObjectURL(imagePreview);
+    }
     if (!file) {
       setImageFile(null);
-      setImagePreview(null);
+      setImagePreview(initial?.imageUrl ?? null);
       return;
     }
     setImageFile(file);
@@ -68,15 +97,22 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
     }
 
     try {
-      const result = await createProductFromForm(fd);
+      const result = isEdit
+        ? await updateProductFromForm(initial!.id, fd)
+        : await createProductFromForm(fd);
       if (!result.success || !result.data) {
-        setError(result.error ?? "Fehler beim Anlegen des Produkts.");
+        setError(
+          result.error ??
+            (isEdit
+              ? "Fehler beim Speichern des Produkts."
+              : "Fehler beim Anlegen des Produkts.")
+        );
         setLoading(false);
         return;
       }
       router.push(`/produkte/${result.data.id}`);
     } catch {
-      setError("Fehler beim Anlegen des Produkts.");
+      setError(isEdit ? "Fehler beim Speichern des Produkts." : "Fehler beim Anlegen des Produkts.");
       setLoading(false);
     }
   };
@@ -84,15 +120,18 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
   return (
     <div>
       <PageHeader
-        title="Neues Produkt"
-        description="Werkzeug oder Gerät dem Vermietbestand hinzufügen"
-        backHref="/produkte"
+        title={isEdit ? "Produkt bearbeiten" : "Neues Produkt"}
+        description={
+          isEdit
+            ? `${initial!.name} · ${initial!.inventoryNumber}`
+            : "Werkzeug oder Gerät dem Vermietbestand hinzufügen"
+        }
+        backHref={isEdit ? `/produkte/${initial!.id}` : "/produkte"}
       />
 
       <Card className="max-w-2xl">
         <CardContent className="p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Produktbild */}
             <div className="space-y-2">
               <Label>Produktbild</Label>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -140,7 +179,7 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <ImagePlus className="mr-2 h-4 w-4" />
-                    {imageFile ? "Anderes Bild wählen" : "Bild auswählen"}
+                    {imageFile || imagePreview ? "Anderes Bild wählen" : "Bild auswählen"}
                   </Button>
                   {imageFile && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -167,28 +206,59 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="name">Produktname *</Label>
-                <Input id="name" name="name" required placeholder="z.B. Darda MC300 Zange" />
+                <Input
+                  id="name"
+                  name="name"
+                  required
+                  defaultValue={initial?.name}
+                  placeholder="z.B. Darda MC300 Zange"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="model">Modell *</Label>
-                <Input id="model" name="model" required placeholder="z.B. MC300" />
+                <Input
+                  id="model"
+                  name="model"
+                  required
+                  defaultValue={initial?.model}
+                  placeholder="z.B. MC300"
+                />
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="inventoryNumber">Inventarnummer *</Label>
-                <Input id="inventoryNumber" name="inventoryNumber" required placeholder="DARDA-MC300-002" />
+                <Input
+                  id="inventoryNumber"
+                  name="inventoryNumber"
+                  required
+                  defaultValue={initial?.inventoryNumber}
+                  placeholder="DARDA-MC300-002"
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="serialNumber">Seriennummer *</Label>
-                <Input id="serialNumber" name="serialNumber" required />
+                <Input
+                  id="serialNumber"
+                  name="serialNumber"
+                  required
+                  defaultValue={initial?.serialNumber}
+                />
               </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="categoryId">Kategorie *</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label htmlFor="categoryId">Kategorie *</Label>
+                  <CreateCategoryDialog
+                    onCreated={(cat) => {
+                      setCategories((prev) => [...prev, cat]);
+                      setCategoryId(cat.id);
+                    }}
+                  />
+                </div>
                 <Select value={categoryId} onValueChange={setCategoryId} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Kategorie wählen" />
@@ -204,7 +274,7 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
               </div>
               <div className="space-y-2">
                 <Label htmlFor="locationId">Standort</Label>
-                <Select value={locationId} onValueChange={setLocationId}>
+                <Select value={locationId || undefined} onValueChange={setLocationId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Standort wählen" />
                   </SelectTrigger>
@@ -222,7 +292,17 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="dailyRate">Tagessatz (€) *</Label>
-                <Input id="dailyRate" name="dailyRate" type="number" step="0.01" min="0" required />
+                <Input
+                  id="dailyRate"
+                  name="dailyRate"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  required
+                  defaultValue={
+                    initial ? (initial.dailyRateCents / 100).toFixed(2) : undefined
+                  }
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="condition">Zustand</Label>
@@ -241,16 +321,63 @@ export function CreateProductForm({ categories, locations }: CreateProductFormPr
               </div>
             </div>
 
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2">
+                <Label htmlFor="yearBuilt">Baujahr</Label>
+                <Input
+                  id="yearBuilt"
+                  name="yearBuilt"
+                  type="number"
+                  min="1950"
+                  max={new Date().getFullYear() + 1}
+                  placeholder="z.B. 2022"
+                  defaultValue={initial?.yearBuilt ?? undefined}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="weightKg">Gewicht (kg)</Label>
+                <Input
+                  id="weightKg"
+                  name="weightKg"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  placeholder="z.B. 28.5"
+                  defaultValue={initial?.weightKg ?? undefined}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dimensions">Abmessungen</Label>
+                <Input
+                  id="dimensions"
+                  name="dimensions"
+                  placeholder="z.B. 80 × 40 × 25 cm"
+                  defaultValue={initial?.dimensions ?? undefined}
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="description">Beschreibung</Label>
-              <Textarea id="description" name="description" rows={3} />
+              <Textarea
+                id="description"
+                name="description"
+                rows={3}
+                defaultValue={initial?.description ?? undefined}
+              />
             </div>
 
             {error && <p className="text-sm text-status-damage">{error}</p>}
 
             <div className="flex gap-3 pt-2">
               <Button type="submit" disabled={loading}>
-                {loading ? "Wird angelegt…" : "Produkt anlegen"}
+                {loading
+                  ? isEdit
+                    ? "Wird gespeichert…"
+                    : "Wird angelegt…"
+                  : isEdit
+                    ? "Speichern"
+                    : "Produkt anlegen"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Abbrechen

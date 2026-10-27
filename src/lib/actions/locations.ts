@@ -102,9 +102,55 @@ export async function createLocation(input: z.infer<typeof createLocationSchema>
   }
 }
 
+const updateLocationSchema = createLocationSchema.partial().extend({
+  isActive: z.boolean().optional(),
+});
+
+export async function updateLocation(
+  id: string,
+  input: z.infer<typeof updateLocationSchema>
+) {
+  try {
+    const user = await requireAuth();
+    const parsed = updateLocationSchema.safeParse(input);
+
+    if (!parsed.success) {
+      return actionError(getValidationError(parsed.error));
+    }
+
+    if (!id) {
+      return actionError("Standort-ID ist erforderlich");
+    }
+
+    const existing = await prisma.location.findUnique({ where: { id } });
+    if (!existing) {
+      return actionError("Standort nicht gefunden");
+    }
+
+    const location = await prisma.location.update({
+      where: { id },
+      data: parsed.data,
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Location",
+      entityId: location.id,
+      oldValue: existing,
+      newValue: location,
+    });
+
+    revalidatePath("/standorte");
+    return actionSuccess(location);
+  } catch {
+    return actionError("Standort konnte nicht aktualisiert werden");
+  }
+}
+
 /** Alias für bestehende Seiten */
 export async function getLocationsList() {
-  const result = await getLocations();
+  const result = await getLocations({ includeInactive: true });
   if (!result.success) return [];
   return result.data ?? [];
 }

@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
 import { getProductStatusForBookingType } from "@/lib/availability";
 import { requireAuth } from "@/lib/session";
+import { hasPermission } from "@/lib/permissions";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const CHECKOUT_STATUSES: BookingStatus[] = ["ABHOLBEREIT", "IN_VORBEREITUNG", "BESTAETIGT"];
@@ -102,6 +103,9 @@ export async function getPendingCheckouts() {
 export async function performCheckOut(input: z.infer<typeof performCheckOutSchema>) {
   try {
     const user = await requireAuth();
+    if (!hasPermission(user.role, "checkout.perform")) {
+      return actionError("Keine Berechtigung für Ausgaben");
+    }
     const parsed = performCheckOutSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -223,6 +227,9 @@ export async function performCheckOut(input: z.infer<typeof performCheckOutSchem
 export async function performCheckIn(input: z.infer<typeof performCheckInSchema>) {
   try {
     const user = await requireAuth();
+    if (!hasPermission(user.role, "checkin.perform")) {
+      return actionError("Keine Berechtigung für Rückgaben");
+    }
     const parsed = performCheckInSchema.safeParse(input);
 
     if (!parsed.success) {

@@ -19,6 +19,8 @@ export default async function EventDetailPage({
   const event = unwrapActionOrNull(await getEvent(id));
   if (!event) notFound();
 
+  const isMesse = event.type === "MESSE";
+
   const checklistItems = event.checklist
     ? [
         { label: "Produkte reserviert", done: event.checklist.productsReserved },
@@ -53,8 +55,10 @@ export default async function EventDetailPage({
         <TabsList>
           <TabsTrigger value="overview">Übersicht</TabsTrigger>
           <TabsTrigger value="products">Produkte ({event.products.length})</TabsTrigger>
-          <TabsTrigger value="team">Team ({event.participants.length})</TabsTrigger>
-          <TabsTrigger value="checklist">Checkliste</TabsTrigger>
+          {!isMesse && (
+            <TabsTrigger value="team">Team ({event.participants.length})</TabsTrigger>
+          )}
+          {!isMesse && <TabsTrigger value="checklist">Checkliste</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="overview">
@@ -158,46 +162,50 @@ export default async function EventDetailPage({
           </Card>
         </TabsContent>
 
-        <TabsContent value="team">
-          <Card>
-            <CardContent className="p-6">
-              {event.participants.length === 0 ? (
-                <p className="text-sm text-gray-500">Keine Teilnehmer zugeordnet.</p>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {event.participants.map((p) => (
-                    <li key={p.id} className="py-3 text-sm">
-                      {p.user.firstName} {p.user.lastName}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {!isMesse && (
+          <TabsContent value="team">
+            <Card>
+              <CardContent className="p-6">
+                {event.participants.length === 0 ? (
+                  <p className="text-sm text-gray-500">Keine Teilnehmer zugeordnet.</p>
+                ) : (
+                  <ul className="divide-y divide-gray-100">
+                    {event.participants.map((p) => (
+                      <li key={p.id} className="py-3 text-sm">
+                        {p.user.firstName} {p.user.lastName}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-        <TabsContent value="checklist">
-          <Card>
-            <CardContent className="p-6">
-              {checklistItems.length === 0 ? (
-                <p className="text-sm text-gray-500">Keine Checkliste vorhanden.</p>
-              ) : (
-                <ul className="space-y-2">
-                  {checklistItems.map((item) => (
-                    <li key={item.label} className="flex items-center gap-2 text-sm">
-                      {item.done ? (
-                        <CheckCircle2 className="h-4 w-4 text-status-available" />
-                      ) : (
-                        <Circle className="h-4 w-4 text-gray-300" />
-                      )}
-                      {item.label}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {!isMesse && (
+          <TabsContent value="checklist">
+            <Card>
+              <CardContent className="p-6">
+                {checklistItems.length === 0 ? (
+                  <p className="text-sm text-gray-500">Keine Checkliste vorhanden.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {checklistItems.map((item) => (
+                      <li key={item.label} className="flex items-center gap-2 text-sm">
+                        {item.done ? (
+                          <CheckCircle2 className="h-4 w-4 text-status-available" />
+                        ) : (
+                          <Circle className="h-4 w-4 text-gray-300" />
+                        )}
+                        {item.label}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

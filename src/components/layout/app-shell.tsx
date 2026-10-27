@@ -17,13 +17,14 @@ import {
   BarChart3,
   UserCog,
   Settings,
+  Wrench,
   ChevronLeft,
   ChevronRight,
   LogOut,
   Bell,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { roleLabels } from "@/lib/permissions";
+import { canAccessRoute, roleLabels } from "@/lib/permissions";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 
@@ -36,6 +37,7 @@ const navItems = [
   { href: "/messen-demos", label: "Messen & Demos", icon: Presentation },
   { href: "/ausgaben-rueckgaben", label: "Ausgaben & Rückgaben", icon: ArrowLeftRight },
   { href: "/schaeden", label: "Schäden", icon: AlertTriangle },
+  { href: "/wartungen", label: "Wartungen", icon: Wrench },
   { href: "/standorte", label: "Standorte", icon: MapPin },
   { href: "/berichte", label: "Berichte", icon: BarChart3 },
   { href: "/benutzer", label: "Benutzer", icon: UserCog },
@@ -75,14 +77,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Link>
           {!collapsed && (
             <div className="min-w-0">
-              <div className="text-sm font-bold tracking-wide">FLX Rent</div>
-              <div className="text-[10px] text-white/60">Werkzeugverwaltung</div>
+              <div className="text-sm font-bold tracking-wide">FLX Software</div>
+              <div className="text-[10px] text-white/60">Miet- und Demopark</div>
             </div>
           )}
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4 scrollbar-thin">
-          {navItems.map((item) => {
+          {navItems
+            .filter((item) =>
+              session?.user?.role ? canAccessRoute(session.user.role, item.href) : true
+            )
+            .map((item) => {
             const Icon = item.icon;
             const active = pathname.startsWith(item.href);
             return (
@@ -118,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-gray-200 bg-white px-6">
           <div className="flex items-center gap-4">
             <h1 className="text-lg font-semibold text-flx-navy">
-              {navItems.find((i) => pathname.startsWith(i.href))?.label ?? "FLX Rent"}
+              {navItems.find((i) => pathname.startsWith(i.href))?.label ?? "FLX Software"}
             </h1>
           </div>
           <div className="flex items-center gap-4">

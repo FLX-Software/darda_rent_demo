@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BookingType, ShipmentMethod } from "@prisma/client";
+import { BookingStatus, BookingType, ShipmentMethod } from "@prisma/client";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Button } from "@/components/ui/button";
@@ -18,30 +18,71 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createBooking } from "@/lib/actions/bookings";
+import { createBooking, updateBooking } from "@/lib/actions/bookings";
 import { checkMultipleProductsAvailability } from "@/lib/availability";
-import { bookingTypeLabels } from "@/lib/labels";
+import { bookingStatusLabels, bookingTypeLabels } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
-interface CreateBookingFormProps {
+interface BookingFormInitial {
+  id: string;
+  bookingNumber: string;
+  type: BookingType;
+  status: BookingStatus;
+  customerId: string | null;
+  contactName: string | null;
+  projectName: string | null;
+  startDate: Date;
+  plannedReturnDate: Date;
+  shipmentMethod: ShipmentMethod | null;
+  notes: string | null;
+  productIds: string[];
+}
+
+interface BookingFormProps {
+  mode?: "create" | "edit";
+  initial?: BookingFormInitial;
   products: { id: string; name: string; inventoryNumber: string; status: string }[];
   customers: { id: string; companyName: string; customerNumber: string }[];
 }
 
-export function CreateBookingForm({ products, customers }: CreateBookingFormProps) {
+function toDateInput(value: Date | string) {
+  const d = new Date(value);
+  const offset = d.getTimezoneOffset();
+  const local = new Date(d.getTime() - offset * 60 * 1000);
+  return local.toISOString().split("T")[0];
+}
+
+export function CreateBookingForm({
+  mode = "create",
+  initial,
+  products,
+  customers,
+}: BookingFormProps) {
   const router = useRouter();
-  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const isEdit = mode === "edit" && !!initial;
+
+  const [selectedProducts, setSelectedProducts] = useState<string[]>(initial?.productIds ?? []);
+  const [startDate, setStartDate] = useState(initial ? toDateInput(initial.startDate) : "");
+  const [endDate, setEndDate] = useState(initial ? toDateInput(initial.plannedReturnDate) : "");
   const [availability, setAvailability] = useState<Awaited<
     ReturnType<typeof checkMultipleProductsAvailability>
   > | null>(null);
   const [checking, setChecking] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [bookingType, setBookingType] = useState<BookingType>("KUNDENVERMIETUNG");
-  const [customerId, setCustomerId] = useState("");
-  const [shipmentMethod, setShipmentMethod] = useState<ShipmentMethod | "">("");
+  const [bookingType, setBookingType] = useState<BookingType>(
+    initial?.type ?? "KUNDENVERMIETUNG"
+  );
+  const [bookingStatus, setBookingStatus] = useState<BookingStatus>(
+    initial?.status ?? "ENTWURF"
+  );
+  const [customerId, setCustomerId] = useState(initial?.customerId ?? "");
+  const [shipmentMethod, setShipmentMethod] = useState<ShipmentMethod | "">(
+    initial?.shipmentMethod ?? ""
+  );
+  const [projectName, setProjectName] = useState(initial?.projectName ?? "");
+  const [contactName, setContactName] = useState(initial?.contactName ?? "");
+  const [notes, setNotes] = useState(initial?.notes ?? "");
 
   const toggleProduct = (id: string) => {
     setSelectedProducts((prev) =>
@@ -56,7 +97,8 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
     const result = await checkMultipleProductsAvailability(
       selectedProducts,
       new Date(startDate),
-      new Date(endDate)
+      new Date(endDate),
+      isEdit ? initial!.id : undefined
     );
     setAvailability(result);
     setChecking(false);
@@ -66,38 +108,49 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
     e.preventDefault();
     setLoading(true);
     setError("");
-    const fd = new FormData(e.currentTarget);
 
-    const result = await createBooking({
+    const payload = {
       type: bookingType,
-      status: "ENTWURF",
+      status: bookingStatus,
       customerId: customerId || undefined,
-      contactName: (fd.get("contactName") as string) || undefined,
-      projectName: (fd.get("projectName") as string) || undefined,
+      contactName: contactName || undefined,
+      projectName: projectName || undefined,
       startDate: new Date(startDate),
       plannedReturnDate: new Date(endDate),
       prepDaysBefore: 0,
       prepDaysAfter: 0,
       shipmentMethod: shipmentMethod || undefined,
-      notes: (fd.get("notes") as string) || undefined,
+      notes: notes || undefined,
       items: selectedProducts.map((productId) => ({ productId, quantity: 1 })),
-    });
+    };
+
+    const result = isEdit
+      ? await updateBooking(initial!.id, payload)
+      : await createBooking(payload);
 
     if (!result.success || !result.data) {
-      setError(result.error ?? "Buchung konnte nicht erstellt werden");
+      setError(
+        result.error ??
+          (isEdit ? "Buchung konnte nicht gespeichert werden" : "Buchung konnte nicht erstellt werden")
+      );
       setLoading(false);
       return;
     }
 
     router.push(`/buchungen/${result.data.id}`);
+    router.refresh();
   };
 
   return (
     <div>
       <PageHeader
-        title="Neue Buchung"
-        description="Vermietung, Messe, Demo oder internen Einsatz planen"
-        backHref="/buchungen"
+        title={isEdit ? `Buchung bearbeiten` : "Neue Buchung"}
+        description={
+          isEdit
+            ? initial!.bookingNumber
+            : "Vermietung, Messe, Demo oder internen Einsatz planen"
+        }
+        backHref={isEdit ? `/buchungen/${initial!.id}` : "/buchungen"}
       />
 
       <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-3">
@@ -124,15 +177,18 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="customerId">Kunde</Label>
-                  <Select value={customerId} onValueChange={setCustomerId}>
+                  <Label htmlFor="status">Status</Label>
+                  <Select
+                    value={bookingStatus}
+                    onValueChange={(v) => setBookingStatus(v as BookingStatus)}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Kunde wählen" />
+                      <SelectValue placeholder="Status wählen" />
                     </SelectTrigger>
                     <SelectContent>
-                      {customers.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.companyName} ({c.customerNumber})
+                      {(Object.keys(bookingStatusLabels) as BookingStatus[]).map((s) => (
+                        <SelectItem key={s} value={s}>
+                          {bookingStatusLabels[s]}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -140,14 +196,40 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
                 </div>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="customerId">Kunde</Label>
+                <Select value={customerId} onValueChange={setCustomerId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Kunde wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customers.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.companyName} ({c.customerNumber})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="projectName">Projektname</Label>
-                  <Input id="projectName" name="projectName" />
+                  <Input
+                    id="projectName"
+                    name="projectName"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="contactName">Ansprechpartner</Label>
-                  <Input id="contactName" name="contactName" />
+                  <Input
+                    id="contactName"
+                    name="contactName"
+                    value={contactName}
+                    onChange={(e) => setContactName(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -197,7 +279,13 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
 
               <div className="space-y-2">
                 <Label htmlFor="notes">Notizen</Label>
-                <Textarea id="notes" name="notes" rows={2} />
+                <Textarea
+                  id="notes"
+                  name="notes"
+                  rows={2}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
               </div>
             </CardContent>
           </Card>
@@ -293,7 +381,13 @@ export function CreateBookingForm({ products, customers }: CreateBookingFormProp
                 className="w-full"
                 disabled={loading || selectedProducts.length === 0}
               >
-                {loading ? "Wird erstellt…" : "Buchung anlegen"}
+                {loading
+                  ? isEdit
+                    ? "Wird gespeichert…"
+                    : "Wird erstellt…"
+                  : isEdit
+                    ? "Änderungen speichern"
+                    : "Buchung anlegen"}
               </Button>
               {error && <p className="text-sm text-status-damage">{error}</p>}
             </CardContent>

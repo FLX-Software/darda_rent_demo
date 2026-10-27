@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { bookingStatusLabels, bookingTypeLabels } from "@/lib/labels";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { BookingDetailActions } from "./booking-detail-actions";
 
 export default async function BookingDetailPage({
   params,
@@ -26,6 +27,12 @@ export default async function BookingDetailPage({
         backHref="/buchungen"
       >
         <Badge>{bookingStatusLabels[booking.status]}</Badge>
+        <BookingDetailActions
+          bookingId={booking.id}
+          bookingNumber={booking.bookingNumber}
+          status={booking.status}
+          isArchived={booking.isArchived}
+        />
       </PageHeader>
 
       <Tabs defaultValue="overview" className="space-y-4">

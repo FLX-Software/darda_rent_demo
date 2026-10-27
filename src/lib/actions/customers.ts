@@ -5,7 +5,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
 import { requireAuth } from "@/lib/session";
-import { generateCustomerNumber } from "@/lib/utils";
+import { generateCustomerNumber, serializeForClient, toPlainNumber } from "@/lib/utils";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const customerFiltersSchema = z.object({
@@ -43,6 +43,7 @@ const createCustomerSchema = z.object({
   paymentTerms: z.number().int().min(0).default(30),
   discountPercent: z.number().min(0).max(100).default(0),
   notes: z.string().optional(),
+  isActive: z.boolean().optional(),
   contacts: z.array(contactSchema).optional(),
   deliveryAddresses: z.array(deliveryAddressSchema).optional(),
 });
@@ -87,7 +88,14 @@ export async function getCustomers(filters?: z.infer<typeof customerFiltersSchem
       orderBy: { companyName: "asc" },
     });
 
-    return actionSuccess(customers);
+    return actionSuccess(
+      serializeForClient(
+        customers.map((customer) => ({
+          ...customer,
+          discountPercent: toPlainNumber(customer.discountPercent) ?? 0,
+        }))
+      )
+    );
   } catch {
     return actionError("Kunden konnten nicht geladen werden");
   }
@@ -120,7 +128,29 @@ export async function getCustomer(id: string) {
       return actionError("Kunde nicht gefunden");
     }
 
-    return actionSuccess(customer);
+    return actionSuccess(
+      serializeForClient({
+        ...customer,
+        discountPercent: toPlainNumber(customer.discountPercent) ?? 0,
+        customPrices: customer.customPrices.map((cp) => ({
+          ...cp,
+          product: {
+            ...cp.product,
+            weightKg: toPlainNumber(cp.product.weightKg),
+          },
+        })),
+        bookings: customer.bookings.map((booking) => ({
+          ...booking,
+          items: booking.items.map((item) => ({
+            ...item,
+            product: {
+              ...item.product,
+              weightKg: toPlainNumber(item.product.weightKg),
+            },
+          })),
+        })),
+      })
+    );
   } catch {
     return actionError("Kunde konnte nicht geladen werden");
   }

@@ -24,7 +24,7 @@ export default async function QrProductPage({
     <div className="min-h-screen bg-gray-50 p-4">
       <div className="mx-auto max-w-md space-y-4">
         <div className="text-center">
-          <p className="text-xs font-medium uppercase tracking-wider text-flx-blue">FLX Rent</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-flx-blue">FLX Software</p>
           <h1 className="text-xl font-bold text-flx-navy">{product.name}</h1>
           <p className="font-mono text-sm text-gray-400">{product.inventoryNumber}</p>
         </div>

@@ -6,7 +6,7 @@ import { Providers } from "@/components/providers";
 const inter = Inter({ subsets: ["latin"], variable: "--font-geist-sans" });
 
 export const metadata: Metadata = {
-  title: "FLX Rent – Werkzeug- & Produktverwaltung",
+  title: "FLX Software – Miet- und Demopark",
   description: "Digitale Werkzeug- und Produktverwaltung für die Darda GmbH",
 };
 

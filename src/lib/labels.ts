@@ -6,6 +6,7 @@ import {
   DamageSeverity,
   DamageStatus,
   MaintenanceStatus,
+  MaintenanceType,
   LocationType,
   EventType,
   EventStatus,
@@ -169,6 +170,14 @@ export const maintenanceStatusLabels: Record<MaintenanceStatus, string> = {
   UEBERFAELLIG: "Überfällig",
   IN_BEARBEITUNG: "In Bearbeitung",
   ABGESCHLOSSEN: "Abgeschlossen",
+};
+
+export const maintenanceTypeLabels: Record<MaintenanceType, string> = {
+  ROUTINE: "Routine-Wartung",
+  SICHERHEITSPRUEFUNG: "Sicherheitsprüfung",
+  INSPEKTION: "Inspektion",
+  REPARATUR: "Reparatur",
+  KALIBRIERUNG: "Kalibrierung",
 };
 
 export const locationTypeLabels: Record<LocationType, string> = {

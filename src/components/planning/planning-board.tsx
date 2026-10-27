@@ -4,15 +4,22 @@ import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import {
   addDays,
   addMonths,
+  addYears,
   differenceInDays,
+  differenceInMonths,
   eachDayOfInterval,
+  eachMonthOfInterval,
   endOfMonth,
+  endOfYear,
   format,
   isSameDay,
   isSameMonth,
+  isSameYear,
   isWeekend,
+  isWithinInterval,
   startOfDay,
   startOfMonth,
+  startOfYear,
 } from "date-fns";
 import { de } from "date-fns/locale";
 import Link from "next/link";
@@ -21,6 +28,7 @@ import {
   ChevronRight,
   Save,
   AlertTriangle,
+  Trash2,
   X,
   Filter,
   GripVertical,
@@ -44,16 +52,22 @@ import {
   type PlanningProductRow,
   type PlanningBookingBar,
 } from "@/lib/actions/planning";
-import { ProductStatusBadge } from "@/components/products/product-status-badge";
+import { ProductBookingTypeBadge } from "@/components/products/product-booking-type-badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { cancelBooking } from "@/lib/actions/bookings";
 
+type ViewMode = "month" | "year";
 type InteractionType = "move" | "resize-start" | "resize-end";
 
 const ROW_HEIGHT = 76;
-const DAY_WIDTH_MIN = 46;
-const DAY_WIDTH_MAX = 56;
-
 const HEADER_HEIGHT = 56;
-const PRODUCT_COL_WIDTH = 300;
+const PRODUCT_COL_WIDTH = 260;
 const SIDEBAR_WIDTH = 320;
 const HANDLE_WIDTH = 10;
 const MIN_BAR_DAYS = 1;
@@ -91,12 +105,69 @@ function getMonthDays(month: Date): Date[] {
   return eachDayOfInterval({ start, end });
 }
 
+function getYearMonths(year: Date): Date[] {
+  return eachMonthOfInterval({
+    start: startOfYear(year),
+    end: endOfYear(year),
+  });
+}
+
 function parseBarId(barId: string) {
   const lastDash = barId.lastIndexOf("-");
   return {
     bookingId: barId.substring(0, lastDash),
     productId: barId.substring(lastDash + 1),
   };
+}
+
+/** Priorität, wenn am selben Tag mehrere Belegungen liegen */
+const DAY_STATUS_PRIORITY: BookingType[] = [
+  "SPERZZEIT",
+  "REPARATUR",
+  "WARTUNG",
+  "MESSE",
+  "PRODUKTDEMO",
+  "VORFUEHRUNG",
+  "AUSSENDIENSTEINSATZ",
+  "KUNDENVERMIETUNG",
+  "INTERNER_EINSATZ",
+  "TRANSPORT",
+];
+
+function barCoversDay(
+  start: Date,
+  end: Date,
+  day: Date
+): boolean {
+  const dayStart = startOfDay(day);
+  const rangeStart = startOfDay(start);
+  const rangeEnd = startOfDay(end);
+  if (rangeEnd < rangeStart) return false;
+  return isWithinInterval(dayStart, { start: rangeStart, end: rangeEnd });
+}
+
+function resolvePlanningDayStatus(
+  productId: string,
+  bars: PlanningBookingBar[],
+  getDates: (bar: PlanningBookingBar) => { start: Date; end: Date },
+  day: Date
+): BookingType | null {
+  const covering = bars
+    .filter((bar) => bar.productId === productId)
+    .filter((bar) => {
+      const dates = getDates(bar);
+      return barCoversDay(dates.start, dates.end, day);
+    });
+
+  if (covering.length === 0) return null;
+
+  covering.sort((a, b) => {
+    const ai = DAY_STATUS_PRIORITY.indexOf(a.type as BookingType);
+    const bi = DAY_STATUS_PRIORITY.indexOf(b.type as BookingType);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+  });
+
+  return covering[0].type as BookingType;
 }
 
 function getBarLabel(bar: PlanningBookingBar, showDetails: boolean): string {
@@ -110,27 +181,35 @@ function BookingBar({
   bar,
   left,
   width,
+  leftPct,
+  widthPct,
   rowHeight,
   color,
   hasPending,
   isActive,
   preview,
+  readOnly = false,
   onSelect,
   onInteractionStart,
 }: {
   bar: PlanningBookingBar;
-  left: number;
-  width: number;
+  left?: number;
+  width?: number;
+  leftPct?: number;
+  widthPct?: number;
   rowHeight: number;
   color: string;
   hasPending: boolean;
   isActive: boolean;
   preview: BarPreview | null;
+  readOnly?: boolean;
   onSelect: () => void;
   onInteractionStart: (e: React.PointerEvent, type: InteractionType) => void;
 }) {
-  const showDetails = width >= 140;
-  const showDates = width >= 200;
+  const usePercent = leftPct !== undefined && widthPct !== undefined;
+  const pixelWidth = width ?? 0;
+  const showDetails = usePercent ? widthPct >= 8 : pixelWidth >= 140;
+  const showDates = usePercent ? widthPct >= 12 : pixelWidth >= 200;
   const label = getBarLabel(bar, showDetails);
   const start = preview?.startDate ?? new Date(bar.startDate);
   const end = preview?.endDate ?? new Date(bar.endDate);
@@ -142,57 +221,78 @@ function BookingBar({
         "group absolute top-[7px] flex overflow-hidden rounded-md border border-white/30 shadow-sm",
         hasPending && "ring-2 ring-amber-400 ring-offset-1",
         isActive && "z-40 shadow-lg ring-2 ring-flx-blue ring-offset-1",
-        bar.hasConflict && "ring-2 ring-status-damage"
+        bar.hasConflict && "ring-2 ring-status-damage",
+        readOnly && "cursor-pointer"
       )}
       style={{
-        left,
-        width: Math.max(width, 24),
+        ...(usePercent
+          ? { left: `${leftPct}%`, width: `${Math.max(widthPct, 100 / 31)}%` }
+          : { left, width: Math.max(pixelWidth, 24) }),
         height: barHeight,
         backgroundColor: color,
         zIndex: isActive ? 40 : bar.hasConflict ? 25 : 15,
       }}
       title={`${bar.bookingNumber}\n${bookingTypeLabels[bar.type as BookingType]}\n${bar.customerName ?? ""}\n${formatDate(start)} – ${formatDate(end)}`}
+      onClick={(e) => {
+        if (readOnly) {
+          e.stopPropagation();
+          onSelect();
+        }
+      }}
     >
-      <div
-        className="flex shrink-0 cursor-ew-resize items-center justify-center bg-black/30 hover:bg-black/50"
-        style={{ width: HANDLE_WIDTH }}
-        onPointerDown={(e) => onInteractionStart(e, "resize-start")}
-      >
-        <div className="h-5 w-0.5 rounded-full bg-white/80" />
-      </div>
+      {!readOnly && (
+        <div
+          className="flex shrink-0 cursor-ew-resize items-center justify-center bg-black/30 hover:bg-black/50"
+          style={{ width: HANDLE_WIDTH }}
+          onPointerDown={(e) => onInteractionStart(e, "resize-start")}
+        >
+          <div className="h-5 w-0.5 rounded-full bg-white/80" />
+        </div>
+      )}
 
       <div
-        className="flex min-w-0 flex-1 cursor-grab flex-col justify-center px-2 active:cursor-grabbing"
-        onPointerDown={(e) => onInteractionStart(e, "move")}
+        className={cn(
+          "flex min-w-0 flex-1 flex-col justify-center px-2",
+          readOnly ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"
+        )}
+        onPointerDown={readOnly ? undefined : (e) => onInteractionStart(e, "move")}
         onClick={(e) => {
-          e.stopPropagation();
+          if (!readOnly) {
+            e.stopPropagation();
+          }
           onSelect();
         }}
       >
-        <span className="truncate text-xs font-semibold leading-snug text-white">
-          {label}
-        </span>
+        {showDetails && (
+          <span className="truncate text-xs font-semibold leading-snug text-white">
+            {label}
+          </span>
+        )}
         {showDates && (
           <span className="truncate text-[11px] leading-snug text-white/90">
             {format(start, "dd.MM.", { locale: de })} – {format(end, "dd.MM.yy", { locale: de })}
           </span>
         )}
-        {!showDetails && (
+        {!showDetails && !readOnly && (
           <span className="truncate text-[10px] text-white/85">{bar.bookingNumber}</span>
         )}
       </div>
 
-      <div
-        className="flex shrink-0 cursor-ew-resize items-center justify-center bg-black/30 hover:bg-black/50"
-        style={{ width: HANDLE_WIDTH }}
-        onPointerDown={(e) => onInteractionStart(e, "resize-end")}
-      >
-        <div className="h-5 w-0.5 rounded-full bg-white/80" />
-      </div>
+      {!readOnly && (
+        <div
+          className="flex shrink-0 cursor-ew-resize items-center justify-center bg-black/30 hover:bg-black/50"
+          style={{ width: HANDLE_WIDTH }}
+          onPointerDown={(e) => onInteractionStart(e, "resize-end")}
+        >
+          <div className="h-5 w-0.5 rounded-full bg-white/80" />
+        </div>
+      )}
 
-      <div className="pointer-events-none absolute left-1/2 top-1 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-50">
-        <GripVertical className="h-3 w-3 text-white/80" />
-      </div>
+      {!readOnly && (
+        <div className="pointer-events-none absolute left-1/2 top-1 -translate-x-1/2 opacity-0 transition-opacity group-hover:opacity-50">
+          <GripVertical className="h-3 w-3 text-white/80" />
+        </div>
+      )}
     </div>
   );
 }
@@ -203,6 +303,7 @@ export function PlanningBoard({
   categories,
 }: PlanningBoardProps) {
   const [currentMonth, setCurrentMonth] = useState(startOfMonth(new Date()));
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [bookings, setBookings] = useState(initialBookings);
@@ -213,47 +314,27 @@ export function PlanningBoard({
   const [interactionHint, setInteractionHint] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [boardWidth, setBoardWidth] = useState(0);
-  const [loadingMonth, setLoadingMonth] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const interactionRef = useRef<InteractionState | null>(null);
   const previewRef = useRef<BarPreview | null>(null);
   const didDragRef = useRef(false);
-  const boardRef = useRef<HTMLDivElement>(null);
+  const timelineRef = useRef<HTMLDivElement>(null);
   const skipInitialFetch = useRef(true);
 
   const days = useMemo(() => getMonthDays(currentMonth), [currentMonth]);
+  const months = useMemo(() => getYearMonths(currentMonth), [currentMonth]);
   const rowHeight = ROW_HEIGHT;
-  const rangeStart = days[0];
+  const rangeStart = viewMode === "month" ? days[0] : startOfYear(currentMonth);
   const today = startOfDay(new Date());
+  const timelineUnits = viewMode === "month" ? days.length : months.length;
 
-  const sidebarOpen = !!selectedBar;
-  const sidebarWidth = sidebarOpen ? SIDEBAR_WIDTH : 0;
-
-  const dayWidth = useMemo(() => {
-    const available = boardWidth - PRODUCT_COL_WIDTH - sidebarWidth;
-    if (available <= 0 || days.length === 0) return DAY_WIDTH_MIN;
-
-    const fitW = available / days.length;
-    if (fitW >= DAY_WIDTH_MIN) {
-      return Math.min(DAY_WIDTH_MAX, fitW);
-    }
-    return DAY_WIDTH_MIN;
-  }, [boardWidth, days.length, sidebarWidth]);
-
-  const timelineWidth = days.length * dayWidth;
-  const needsHorizontalScroll = timelineWidth > boardWidth - PRODUCT_COL_WIDTH - sidebarWidth;
-
-  useEffect(() => {
-    const el = boardRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver((entries) => {
-      setBoardWidth(entries[0]?.contentRect.width ?? 0);
-    });
-    ro.observe(el);
-    setBoardWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
+  const getUnitWidth = useCallback(() => {
+    const width = timelineRef.current?.clientWidth ?? 0;
+    return timelineUnits > 0 ? width / timelineUnits : 1;
+  }, [timelineUnits]);
 
   useEffect(() => {
     if (skipInitialFetch.current) {
@@ -262,20 +343,24 @@ export function PlanningBoard({
     }
 
     let cancelled = false;
-    setLoadingMonth(true);
+    setLoadingData(true);
 
-    getPlanningData(startOfMonth(currentMonth), endOfMonth(currentMonth))
+    const start =
+      viewMode === "month" ? startOfMonth(currentMonth) : startOfYear(currentMonth);
+    const end = viewMode === "month" ? endOfMonth(currentMonth) : endOfYear(currentMonth);
+
+    getPlanningData(start, end)
       .then((data) => {
         if (!cancelled) setBookings(data.bookings);
       })
       .finally(() => {
-        if (!cancelled) setLoadingMonth(false);
+        if (!cancelled) setLoadingData(false);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [currentMonth]);
+  }, [currentMonth, viewMode]);
 
   const filteredProducts = useMemo(() => {
     return initialProducts.filter((p) => {
@@ -294,6 +379,23 @@ export function PlanningBoard({
 
   const getBarPosition = useCallback(
     (start: Date, end: Date) => {
+      if (viewMode === "year") {
+        const yearStart = startOfYear(currentMonth);
+        const startMonth = differenceInMonths(startOfMonth(start), yearStart);
+        const endMonth = differenceInMonths(startOfMonth(end), yearStart);
+
+        const visibleStart = Math.max(0, startMonth);
+        const visibleEnd = Math.min(months.length - 1, endMonth);
+
+        if (visibleEnd < 0 || visibleStart > months.length - 1) {
+          return { leftPct: 0, widthPct: 0, visible: false };
+        }
+
+        const leftPct = (visibleStart / months.length) * 100;
+        const widthPct = ((visibleEnd - visibleStart + 1) / months.length) * 100;
+        return { leftPct, widthPct, visible: true };
+      }
+
       const startDay = differenceInDays(startOfDay(start), rangeStart);
       const endDay = differenceInDays(startOfDay(end), rangeStart);
 
@@ -301,17 +403,17 @@ export function PlanningBoard({
       const visibleEndDay = Math.min(days.length - 1, endDay);
 
       if (visibleEndDay < 0 || visibleStartDay > days.length - 1) {
-        return { left: 0, width: 0, visible: false };
+        return { leftPct: 0, widthPct: 0, visible: false };
       }
 
-      const left = visibleStartDay * dayWidth;
-      const width = Math.max(
-        dayWidth * MIN_BAR_DAYS,
-        (visibleEndDay - visibleStartDay + 1) * dayWidth
+      const leftPct = (visibleStartDay / days.length) * 100;
+      const widthPct = Math.max(
+        (MIN_BAR_DAYS / days.length) * 100,
+        ((visibleEndDay - visibleStartDay + 1) / days.length) * 100
       );
-      return { left, width, visible: true };
+      return { leftPct, widthPct, visible: true };
     },
-    [rangeStart, dayWidth, days.length]
+    [viewMode, currentMonth, rangeStart, days.length, months.length]
   );
 
   const getBarDates = useCallback(
@@ -362,6 +464,7 @@ export function PlanningBoard({
 
   const startInteraction = useCallback(
     (e: React.PointerEvent, barId: string, type: InteractionType) => {
+      if (viewMode === "year") return;
       e.stopPropagation();
       e.preventDefault();
       const bar = bookings.find((b) => b.id === barId);
@@ -379,15 +482,18 @@ export function PlanningBoard({
       didDragRef.current = false;
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [bookings, getBarDates]
+    [bookings, getBarDates, viewMode]
   );
 
   useEffect(() => {
+    if (viewMode === "year") return;
+
     const onPointerMove = (e: PointerEvent) => {
       const interaction = interactionRef.current;
       if (!interaction) return;
 
-      const deltaDays = Math.round((e.clientX - interaction.startX) / dayWidth);
+      const unitWidth = getUnitWidth();
+      const deltaDays = Math.round((e.clientX - interaction.startX) / unitWidth);
       if (deltaDays === 0 && !didDragRef.current) return;
 
       didDragRef.current = true;
@@ -447,7 +553,7 @@ export function PlanningBoard({
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [dayWidth, calcDatesFromDelta, applyBarChange]);
+  }, [viewMode, getUnitWidth, calcDatesFromDelta, applyBarChange]);
 
   const handleSave = async () => {
     if (pendingChanges.length === 0) return;
@@ -472,8 +578,12 @@ export function PlanningBoard({
     );
   };
 
-  const navigateMonth = (dir: -1 | 1) => {
-    setCurrentMonth((m) => startOfMonth(addMonths(m, dir)));
+  const navigate = (dir: -1 | 1) => {
+    if (viewMode === "month") {
+      setCurrentMonth((m) => startOfMonth(addMonths(m, dir)));
+    } else {
+      setCurrentMonth((m) => startOfMonth(addYears(m, dir)));
+    }
     setSelectedBar(null);
   };
 
@@ -482,8 +592,48 @@ export function PlanningBoard({
     setSelectedBar(null);
   };
 
-  const todayIndex = days.findIndex((d) => isSameDay(d, today));
-  const monthLabel = format(currentMonth, "MMMM yyyy", { locale: de });
+  const openMonth = (month: Date) => {
+    setViewMode("month");
+    setCurrentMonth(startOfMonth(month));
+    setSelectedBar(null);
+  };
+
+  const handleDeleteBooking = async () => {
+    if (!selectedBar) return;
+
+    const { bookingId } = parseBarId(selectedBar.id);
+    setDeleting(true);
+    setSaveMessage(null);
+
+    const result = await cancelBooking(bookingId);
+
+    setDeleting(false);
+
+    if (result.success) {
+      setBookings((prev) =>
+        prev.filter((bar) => parseBarId(bar.id).bookingId !== bookingId)
+      );
+      setPendingChanges((prev) => prev.filter((change) => change.bookingId !== bookingId));
+      setSelectedBar(null);
+      setDeleteDialogOpen(false);
+      setSaveMessage("Buchung wurde gelöscht");
+      return;
+    }
+
+    setSaveMessage(result.error ?? "Buchung konnte nicht gelöscht werden");
+  };
+
+  const todayIndex = viewMode === "month" ? days.findIndex((d) => isSameDay(d, today)) : -1;
+  const todayMonthIndex =
+    viewMode === "year" ? months.findIndex((m) => isSameMonth(m, today)) : -1;
+  const periodLabel =
+    viewMode === "month"
+      ? format(currentMonth, "MMMM yyyy", { locale: de })
+      : format(currentMonth, "yyyy", { locale: de });
+  const isCurrentPeriod =
+    viewMode === "month"
+      ? isSameMonth(currentMonth, new Date())
+      : isSameYear(currentMonth, new Date());
 
   const legendTypes = visibleProductBookingTypes;
 
@@ -491,8 +641,27 @@ export function PlanningBoard({
     <div className="flex h-full min-h-0 flex-col gap-3">
       {/* Toolbar */}
       <div className="flex shrink-0 flex-wrap items-center gap-3">
+        <Tabs
+          value={viewMode}
+          onValueChange={(v) => {
+            setViewMode(v as ViewMode);
+            setSelectedBar(null);
+            setBarPreviews({});
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="month">Monat</TabsTrigger>
+            <TabsTrigger value="year">Jahr</TabsTrigger>
+          </TabsList>
+        </Tabs>
+
         <div className="flex items-center gap-1">
-          <Button variant="outline" size="icon" onClick={() => navigateMonth(-1)} title="Vorheriger Monat">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(-1)}
+            title={viewMode === "month" ? "Vorheriger Monat" : "Vorheriges Jahr"}
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button
@@ -500,19 +669,24 @@ export function PlanningBoard({
             className="min-w-[160px] font-semibold capitalize"
             onClick={goToToday}
           >
-            {monthLabel}
+            {periodLabel}
           </Button>
-          <Button variant="outline" size="icon" onClick={() => navigateMonth(1)} title="Nächster Monat">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => navigate(1)}
+            title={viewMode === "month" ? "Nächster Monat" : "Nächstes Jahr"}
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
-          {!isSameMonth(currentMonth, new Date()) && (
+          {!isCurrentPeriod && (
             <Button variant="ghost" size="sm" onClick={goToToday}>
               Heute
             </Button>
           )}
         </div>
 
-        {loadingMonth && (
+        {loadingData && (
           <span className="text-xs text-gray-400">Lade Buchungen…</span>
         )}
 
@@ -564,8 +738,9 @@ export function PlanningBoard({
           </div>
         ))}
         <span className="ml-2 text-xs text-gray-400">
-          · Mitte ziehen = verschieben · Ränder = Zeitraum anpassen
-          {needsHorizontalScroll && " · Horizontal scrollen für alle Tage"}
+          {viewMode === "month"
+            ? "· Mitte ziehen = verschieben · Ränder = Zeitraum anpassen"
+            : "· Monat anklicken für Detailansicht · Balken anklicken für Details"}
         </span>
       </div>
 
@@ -589,16 +764,15 @@ export function PlanningBoard({
       )}
 
       {/* Hauptbereich: Gantt + optionale Sidebar */}
-      <div ref={boardRef} className="relative flex min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
-        {/* Einheitlicher Scroll-Container */}
-        <div className="min-h-0 flex-1 overflow-auto">
-          <div style={{ minWidth: PRODUCT_COL_WIDTH + timelineWidth }}>
+      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+        {/* Nur vertikal scrollen – alle Tage/Monate passen in die Breite */}
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="flex min-w-0 flex-col">
             {/* Kopfzeile */}
             <div
               className="sticky top-0 z-30 flex border-b border-gray-200 bg-gray-100"
               style={{ height: HEADER_HEIGHT }}
             >
-              {/* Produkt-Header – fixiert links */}
               <div
                 className="sticky left-0 z-40 flex shrink-0 items-center border-r border-gray-300 bg-gray-100 px-4 text-xs font-semibold uppercase tracking-wide text-gray-500 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.08)]"
                 style={{ width: PRODUCT_COL_WIDTH, height: HEADER_HEIGHT }}
@@ -606,37 +780,62 @@ export function PlanningBoard({
                 Produkt
               </div>
 
-              {/* Tages-Header */}
-              <div className="flex shrink-0" style={{ width: timelineWidth }}>
-                {days.map((day) => (
-                  <div
-                    key={day.toISOString()}
-                    className={cn(
-                      "flex shrink-0 flex-col items-center justify-center",
-                      isWeekend(day) && "bg-gray-100/70",
-                      isSameDay(day, today) && "rounded-sm bg-flx-blue/15 font-bold text-flx-blue"
-                    )}
-                    style={{ width: dayWidth, height: HEADER_HEIGHT }}
-                  >
-                    <div className="text-[10px] uppercase text-gray-500">
-                      {format(day, "EEE", { locale: de })}
-                    </div>
-                    <div className="text-sm font-semibold">{format(day, "d", { locale: de })}</div>
-                  </div>
-                ))}
+              <div ref={timelineRef} className="flex min-w-0 flex-1">
+                {viewMode === "month"
+                  ? days.map((day) => (
+                      <div
+                        key={day.toISOString()}
+                        className={cn(
+                          "flex min-w-0 flex-1 flex-col items-center justify-center border-r border-gray-200/60 last:border-r-0",
+                          isWeekend(day) && "bg-gray-100/70",
+                          isSameDay(day, today) && "bg-flx-blue/15 font-bold text-flx-blue"
+                        )}
+                        style={{ height: HEADER_HEIGHT }}
+                      >
+                        <div className="truncate text-[9px] uppercase text-gray-500 sm:text-[10px]">
+                          {format(day, "EEEEE", { locale: de })}
+                        </div>
+                        <div className="text-xs font-semibold sm:text-sm">{format(day, "d", { locale: de })}</div>
+                      </div>
+                    ))
+                  : months.map((month) => (
+                      <button
+                        key={month.toISOString()}
+                        type="button"
+                        onClick={() => openMonth(month)}
+                        className={cn(
+                          "flex min-w-0 flex-1 flex-col items-center justify-center border-r border-gray-200/60 transition-colors last:border-r-0 hover:bg-flx-blue/10",
+                          isSameMonth(month, today) && "bg-flx-blue/15 font-bold text-flx-blue"
+                        )}
+                        style={{ height: HEADER_HEIGHT }}
+                        title={`${format(month, "MMMM yyyy", { locale: de })} öffnen`}
+                      >
+                        <div className="truncate text-[10px] uppercase text-gray-500">
+                          {format(month, "MMM", { locale: de })}
+                        </div>
+                        {isSameMonth(month, today) && (
+                          <div className="mt-0.5 h-1 w-1 rounded-full bg-flx-blue" />
+                        )}
+                      </button>
+                    ))}
               </div>
             </div>
 
             {/* Produktzeilen */}
             {filteredProducts.map((product) => {
               const productBars = bookings.filter((b) => b.productId === product.id);
+              const dayStatus = resolvePlanningDayStatus(
+                product.id,
+                productBars,
+                getBarDates,
+                today
+              );
               return (
                 <div
                   key={product.id}
                   className="flex border-b border-gray-100"
                   style={{ height: rowHeight }}
                 >
-                  {/* Produktzelle – fixiert links */}
                   <div
                     className="sticky left-0 z-20 flex shrink-0 flex-col justify-center border-r border-gray-200 bg-white px-4 shadow-[2px_0_6px_-2px_rgba(0,0,0,0.06)]"
                     style={{ width: PRODUCT_COL_WIDTH, height: rowHeight }}
@@ -648,19 +847,24 @@ export function PlanningBoard({
                       {product.inventoryNumber}
                     </div>
                     <div className="mt-1.5">
-                      <ProductStatusBadge status={product.status} />
+                      <ProductBookingTypeBadge type={dayStatus} />
                     </div>
                   </div>
 
-                  {/* Zeitachse – Balken nur hier, overflow hidden */}
                   <div
-                    className="relative shrink-0 overflow-hidden bg-white"
-                    style={{ width: timelineWidth, height: rowHeight }}
+                    className="relative min-w-0 flex-1 overflow-hidden bg-white"
+                    style={{ height: rowHeight }}
                   >
-                    {todayIndex >= 0 && (
+                    {viewMode === "month" && todayIndex >= 0 && (
                       <div
                         className="pointer-events-none absolute top-0 z-10 h-full w-0.5 bg-flx-blue"
-                        style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
+                        style={{ left: `${((todayIndex + 0.5) / days.length) * 100}%` }}
+                      />
+                    )}
+                    {viewMode === "year" && todayMonthIndex >= 0 && (
+                      <div
+                        className="pointer-events-none absolute top-0 z-10 h-full w-0.5 bg-flx-blue"
+                        style={{ left: `${((todayMonthIndex + 0.5) / months.length) * 100}%` }}
                       />
                     )}
 
@@ -676,13 +880,14 @@ export function PlanningBoard({
                         <BookingBar
                           key={bar.id}
                           bar={bar}
-                          left={pos.left}
-                          width={pos.width}
+                          leftPct={pos.leftPct}
+                          widthPct={pos.widthPct}
                           rowHeight={rowHeight}
                           color={color}
                           hasPending={hasPending}
                           isActive={activeBarId === bar.id}
                           preview={barPreviews[bar.id] ?? null}
+                          readOnly={viewMode === "year"}
                           onSelect={() => setSelectedBar(bar)}
                           onInteractionStart={(e, type) => startInteraction(e, bar.id, type)}
                         />
@@ -695,10 +900,10 @@ export function PlanningBoard({
           </div>
         </div>
 
-        {/* Detail-Sidebar – außerhalb des Scrollbereichs */}
+        {/* Detail-Sidebar als Overlay */}
         {selectedBar && (
           <div
-            className="shrink-0 overflow-y-auto border-l border-gray-200 bg-gray-50 p-5"
+            className="absolute right-0 top-0 z-50 h-full overflow-y-auto border-l border-gray-200 bg-gray-50 p-5 shadow-xl"
             style={{ width: SIDEBAR_WIDTH }}
           >
             <div className="mb-5 flex items-center justify-between">
@@ -755,8 +960,41 @@ export function PlanningBoard({
                 Buchung öffnen
               </Link>
             </Button>
+            <Button
+              className="mt-3 w-full"
+              variant="destructive"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Löschen
+            </Button>
           </div>
         )}
+
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Buchung löschen?</DialogTitle>
+            </DialogHeader>
+            <p className="text-sm text-gray-600">
+              Möchten Sie die Buchung{" "}
+              <span className="font-semibold text-flx-navy">{selectedBar?.bookingNumber}</span>{" "}
+              wirklich löschen? Sie wird aus der Liste und Planung entfernt.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteDialogOpen(false)}
+                disabled={deleting}
+              >
+                Abbrechen
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteBooking} disabled={deleting}>
+                {deleting ? "Löschen…" : "Löschen"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );

@@ -11,6 +11,7 @@ import {
   damageStatusLabels,
 } from "@/lib/labels";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
+import { DamageStatusActions } from "./damage-status-actions";
 
 export default async function SchadenDetailPage({
   params,
@@ -31,6 +32,7 @@ export default async function SchadenDetailPage({
         <Badge variant={report.severity === "SICHERHEITSRELEVANT" ? "danger" : "warning"}>
           {damageSeverityLabels[report.severity]}
         </Badge>
+        <DamageStatusActions damageId={report.id} status={report.status} />
       </PageHeader>
 
       <div className="grid gap-4 lg:grid-cols-2">

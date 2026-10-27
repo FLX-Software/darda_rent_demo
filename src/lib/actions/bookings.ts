@@ -7,7 +7,8 @@ import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
 import { checkMultipleProductsAvailability } from "@/lib/availability";
 import { requireAuth } from "@/lib/session";
-import { generateBookingNumber } from "@/lib/utils";
+import { generateBookingNumber, serializeForClient } from "@/lib/utils";
+import { getNextBookingStatus } from "@/lib/booking-status";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const CONFIRMED_STATUSES: BookingStatus[] = ["BESTAETIGT", "IN_VORBEREITUNG", "ABHOLBEREIT"];
@@ -16,6 +17,8 @@ const CHECKOUT_READY_STATUSES: BookingStatus[] = [
   "ABHOLBEREIT",
   "BESTAETIGT",
   "IN_VORBEREITUNG",
+  "AUSGEGEBEN",
+  "UNTERWEGS",
   "AKTIV",
   "RUECKGABE_FAELLIG",
   "UEBERFAELLIG",
@@ -185,7 +188,7 @@ export async function getBookings(filters?: z.infer<typeof bookingFiltersSchema>
       orderBy: { startDate: "asc" },
     });
 
-    return actionSuccess(bookings);
+    return actionSuccess(serializeForClient(bookings));
   } catch {
     return actionError("Buchungen konnten nicht geladen werden");
   }
@@ -217,7 +220,7 @@ export async function getBooking(id: string) {
       return actionError("Buchung nicht gefunden");
     }
 
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient(booking));
   } catch {
     return actionError("Buchung konnte nicht geladen werden");
   }
@@ -464,8 +467,76 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
     revalidatePath("/planung");
     revalidatePath(`/buchungen/${id}`);
     return actionSuccess(booking);
-  } catch {
+  } catch (error) {
+    console.error("updateBooking failed:", error);
     return actionError("Buchung konnte nicht aktualisiert werden");
+  }
+}
+
+export async function advanceBookingStatus(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Buchungs-ID ist erforderlich");
+    }
+
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!existing) {
+      return actionError("Buchung nicht gefunden");
+    }
+
+    const nextStatus = getNextBookingStatus(existing.status);
+    if (!nextStatus) {
+      return actionError("Für diesen Status gibt es keinen nächsten Schritt");
+    }
+
+    const productIds = existing.items.map((item) => item.productId);
+
+    const booking = await prisma.$transaction(async (tx) => {
+      const updated = await tx.booking.update({
+        where: { id },
+        data: { status: nextStatus },
+        include: {
+          customer: true,
+          items: { include: { product: true } },
+        },
+      });
+
+      if (CONFIRMED_STATUSES.includes(nextStatus)) {
+        await reserveProductsForBooking(
+          tx,
+          productIds,
+          updated.bookingNumber,
+          existing.startDate,
+          user.id
+        );
+      }
+
+      return updated;
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "STATUS_CHANGE",
+      entityType: "Booking",
+      entityId: booking.id,
+      oldValue: { status: existing.status },
+      newValue: { status: booking.status },
+    });
+
+    revalidatePath("/buchungen");
+    revalidatePath(`/buchungen/${id}`);
+    revalidatePath("/ausgaben-rueckgaben");
+    revalidatePath("/planung");
+    revalidatePath("/produkte");
+    return actionSuccess(booking);
+  } catch {
+    return actionError("Status konnte nicht aktualisiert werden");
   }
 }
 
@@ -620,6 +691,63 @@ export async function archiveBooking(id: string) {
   }
 }
 
+export async function cancelBooking(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Buchungs-ID ist erforderlich");
+    }
+
+    const existing = await prisma.booking.findUnique({
+      where: { id },
+      include: { items: true },
+    });
+
+    if (!existing) {
+      return actionError("Buchung nicht gefunden");
+    }
+
+    if (existing.isArchived) {
+      return actionError("Buchung ist bereits gelöscht");
+    }
+
+    const productIds = existing.items.map((item) => item.productId);
+
+    const booking = await prisma.$transaction(async (tx) => {
+      if (existing.status !== "STORNIERT") {
+        await tx.booking.update({
+          where: { id },
+          data: { status: "STORNIERT" },
+        });
+      }
+
+      await releaseReservedProducts(tx, productIds, existing.bookingNumber, user.id);
+
+      return tx.booking.update({
+        where: { id },
+        data: { isArchived: true },
+      });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "Booking",
+      entityId: booking.id,
+      oldValue: existing,
+      newValue: booking,
+    });
+
+    revalidatePath("/buchungen");
+    revalidatePath("/planung");
+    revalidatePath(`/buchungen/${id}`);
+    return actionSuccess(booking);
+  } catch {
+    return actionError("Buchung konnte nicht gelöscht werden");
+  }
+}
+
 export async function checkAvailability(
   productIds: string[],
   startDate: Date,
@@ -651,7 +779,7 @@ export async function checkAvailability(
 
 export async function getBookingsForCheckout() {
   await requireAuth();
-  return prisma.booking.findMany({
+  const bookings = await prisma.booking.findMany({
     where: {
       isArchived: false,
       status: { in: CHECKOUT_READY_STATUSES },
@@ -662,4 +790,5 @@ export async function getBookingsForCheckout() {
     },
     orderBy: { startDate: "asc" },
   });
+  return serializeForClient(bookings);
 }

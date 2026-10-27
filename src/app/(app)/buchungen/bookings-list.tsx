@@ -2,12 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Pencil, Plus } from "lucide-react";
 import { BookingStatus } from "@prisma/client";
 import { PageHeader } from "@/components/shared/page-header";
 import { SearchInput } from "@/components/shared/search-input";
 import { EmptyState } from "@/components/shared/empty-state";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -15,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { DeleteBookingButton } from "@/components/bookings/delete-booking-button";
 import { bookingStatusLabels, bookingTypeLabels } from "@/lib/labels";
 import { formatDate } from "@/lib/utils";
 
@@ -32,11 +35,13 @@ type Booking = {
 };
 
 export function BookingsList({ bookings }: { bookings: Booking[] }) {
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [list, setList] = useState(bookings);
 
   const filtered = useMemo(() => {
-    return bookings.filter((b) => {
+    return list.filter((b) => {
       if (statusFilter !== "all" && b.status !== statusFilter) return false;
       if (search) {
         const q = search.toLowerCase();
@@ -49,7 +54,7 @@ export function BookingsList({ bookings }: { bookings: Booking[] }) {
       }
       return true;
     });
-  }, [bookings, search, statusFilter]);
+  }, [list, search, statusFilter]);
 
   const statusVariant = (status: BookingStatus) => {
     if (["UEBERFAELLIG", "STORNIERT"].includes(status)) return "danger" as const;
@@ -100,16 +105,17 @@ export function BookingsList({ bookings }: { bookings: Booking[] }) {
                 <th className="px-4 py-3 font-medium">Produkte</th>
                 <th className="px-4 py-3 font-medium">Zeitraum</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                <th className="px-4 py-3 font-medium text-right">Aktionen</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((b) => (
-                <tr key={b.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <Link href={`/buchungen/${b.id}`} className="font-mono text-flx-blue hover:underline">
-                      {b.bookingNumber}
-                    </Link>
-                  </td>
+                <tr
+                  key={b.id}
+                  className="cursor-pointer border-t border-gray-100 hover:bg-gray-50"
+                  onClick={() => router.push(`/buchungen/${b.id}`)}
+                >
+                  <td className="px-4 py-3 font-mono font-medium text-flx-blue">{b.bookingNumber}</td>
                   <td className="px-4 py-3 text-gray-600">
                     {bookingTypeLabels[b.type as keyof typeof bookingTypeLabels]}
                   </td>
@@ -125,6 +131,26 @@ export function BookingsList({ bookings }: { bookings: Booking[] }) {
                   </td>
                   <td className="px-4 py-3">
                     <Badge variant={statusVariant(b.status)}>{bookingStatusLabels[b.status]}</Badge>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div
+                      className="flex items-center justify-end gap-1"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Button variant="ghost" size="icon" asChild title="Bearbeiten">
+                        <Link href={`/buchungen/${b.id}/bearbeiten`}>
+                          <Pencil className="h-4 w-4" />
+                        </Link>
+                      </Button>
+                      <DeleteBookingButton
+                        bookingId={b.id}
+                        bookingNumber={b.bookingNumber}
+                        variant="ghost"
+                        size="icon"
+                        showLabel={false}
+                        onDeleted={() => setList((prev) => prev.filter((item) => item.id !== b.id))}
+                      />
+                    </div>
                   </td>
                 </tr>
               ))}

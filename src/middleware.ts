@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { UserRole } from "@prisma/client";
+import { canAccessRoute } from "@/lib/permissions";
 
 const publicPaths = ["/login", "/api/auth", "/api/uploads", "/qr"];
 
@@ -9,10 +11,6 @@ export async function middleware(request: NextRequest) {
 
   if (pathname === "/kalender" || pathname.startsWith("/kalender/")) {
     return NextResponse.redirect(new URL("/planung", request.url));
-  }
-
-  if (pathname === "/wartungen" || pathname.startsWith("/wartungen/")) {
-    return NextResponse.redirect(new URL("/produkte", request.url));
   }
 
   const isPublic = publicPaths.some(
@@ -32,9 +30,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
+  const role = token.role as UserRole | undefined;
+  if (role && !canAccessRoute(role, pathname)) {
+    return NextResponse.redirect(new URL("/dashboard?error=keine_berechtigung", request.url));
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|flx-logo.svg|darda-logo.png|products/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|flx-logo.svg|flx-rent-logo.png|darda-logo.png|products/).*)"],
 };

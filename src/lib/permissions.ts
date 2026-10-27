@@ -105,10 +105,12 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
     "/messen-demos": "events.view",
     "/ausgaben-rueckgaben": "checkout.view",
     "/schaeden": "damages.view",
+    "/wartungen": "maintenance.view",
     "/standorte": "locations.view",
     "/berichte": "reports.view",
     "/benutzer": "users.view",
     "/einstellungen": "settings.view",
+    "/benachrichtigungen": "dashboard.view",
   };
 
   for (const [prefix, permission] of Object.entries(routePermissions)) {
