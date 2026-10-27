@@ -14,8 +14,8 @@ dist/
 .env.local
 .env.*.local
 
-# Uploads
-uploads/
+# Uploads (nur Dateiablage im Projektroot, nicht API-Routen)
+/uploads/
 
 # Debug
 npm-debug.log*

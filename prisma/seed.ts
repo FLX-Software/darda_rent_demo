@@ -8,8 +8,12 @@ import {
   BookingType,
   MaintenanceType,
   MaintenanceStatus,
+  DamageCategory,
+  DamageSeverity,
+  DamageStatus,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { EUROPEAN_FAIRS } from "./european-fairs";
 
 const prisma = new PrismaClient();
 
@@ -324,7 +328,7 @@ async function main() {
     },
   });
 
-  await prisma.booking.create({
+  const activeBooking = await prisma.booking.create({
     data: {
       bookingNumber: `B-${today.getFullYear()}-10002`,
       type: BookingType.KUNDENVERMIETUNG,
@@ -391,6 +395,46 @@ async function main() {
     },
   });
 
+  for (const fair of EUROPEAN_FAIRS) {
+    await prisma.event.create({
+      data: {
+        ...fair,
+        responsibleUserId: admin.id,
+        checklist: { create: {} },
+      },
+    });
+  }
+
+  const damageNumber = `S-${today.getFullYear()}-1001`;
+  await prisma.damageReport.create({
+    data: {
+      damageNumber,
+      productId: p4.id,
+      bookingId: activeBooking.id,
+      customerId: customer2.id,
+      reportedById: admin.id,
+      category: DamageCategory.HYDRAULIKSCHADEN,
+      affectedPart: "Hydraulikschlauch Druckleitung",
+      description:
+        "Bei Rückgabe nach Brückenabbruch Karlsruhe Ölleckage am rechten Hydraulikschlauch festgestellt. Schlauchmantel eingerissen, Druckabfall unter Last. Gerät vorläufig außer Betrieb.",
+      severity: DamageSeverity.SCHWER,
+      repairRequired: true,
+      stillUsable: false,
+      estimatedCostCents: 85000,
+      responsibility: "KUNDE",
+      isInsuranceCase: false,
+      status: DamageStatus.NEU,
+      notes: "Fotos vom Einsatzort angefordert. Kunde Abbruch Meister GmbH informiert.",
+      history: {
+        create: {
+          fromStatus: null,
+          toStatus: DamageStatus.NEU,
+          note: "Schadensmeldung erfasst",
+        },
+      },
+    },
+  });
+
   console.log("✅ Seed abgeschlossen mit Demo-Daten.");
   console.log("");
   console.log("Logins:");
@@ -401,7 +445,9 @@ async function main() {
   console.log("  Service:      service@darda.de / service123");
   console.log("  Lesend:       lesen@darda.de / lesen123");
   console.log("");
-  console.log("Demo: 3 Standorte, 3 Kategorien, 4 Produkte, 2 Kunden, 3 Buchungen, 2 Wartungen");
+  console.log(
+    `Demo: 3 Standorte, 3 Kategorien, 4 Produkte, 2 Kunden, 3 Buchungen, 2 Wartungen, ${EUROPEAN_FAIRS.length} Messen, 1 Schaden`
+  );
 }
 
 main()

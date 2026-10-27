@@ -271,3 +271,68 @@ export async function updateCustomer(id: string, input: z.infer<typeof updateCus
     return actionError("Kunde konnte nicht aktualisiert werden");
   }
 }
+
+export async function deleteCustomer(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Kunden-ID ist erforderlich");
+    }
+
+    const existing = await prisma.customer.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            bookings: true,
+            events: true,
+            damageReports: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return actionError("Kunde nicht gefunden");
+    }
+
+    const linked =
+      existing._count.bookings + existing._count.events + existing._count.damageReports;
+
+    if (linked > 0) {
+      const customer = await prisma.customer.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      await createAuditLog({
+        userId: user.id,
+        action: "UPDATE",
+        entityType: "Customer",
+        entityId: customer.id,
+        oldValue: existing,
+        newValue: customer,
+      });
+
+      revalidatePath("/kunden");
+      revalidatePath(`/kunden/${id}`);
+      return actionSuccess(customer);
+    }
+
+    await prisma.customer.delete({ where: { id } });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Customer",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/kunden");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Kunde konnte nicht gelöscht werden");
+  }
+}

@@ -304,6 +304,56 @@ export async function updateEvent(id: string, input: z.infer<typeof updateEventS
   }
 }
 
+export async function deleteEvent(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Veranstaltungs-ID ist erforderlich");
+    }
+
+    const existing = await prisma.event.findUnique({
+      where: { id },
+      include: {
+        _count: { select: { bookings: true } },
+      },
+    });
+
+    if (!existing) {
+      return actionError("Veranstaltung nicht gefunden");
+    }
+
+    if (existing._count.bookings > 0) {
+      return actionError(
+        "Veranstaltung kann nicht gelöscht werden, solange verknüpfte Buchungen existieren"
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.eventChecklist.deleteMany({ where: { eventId: id } });
+      await tx.eventDocument.deleteMany({ where: { eventId: id } });
+      await tx.eventProduct.deleteMany({ where: { eventId: id } });
+      await tx.eventParticipant.deleteMany({ where: { eventId: id } });
+      await tx.cost.deleteMany({ where: { eventId: id } });
+      await tx.event.delete({ where: { id } });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Event",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/messen-demos");
+    revalidatePath("/planung");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Veranstaltung konnte nicht gelöscht werden");
+  }
+}
+
 export async function toggleChecklistItem(input: z.infer<typeof toggleChecklistSchema>) {
   try {
     const user = await requireAuth();

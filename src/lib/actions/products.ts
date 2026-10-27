@@ -548,6 +548,86 @@ export async function archiveProduct(id: string) {
   }
 }
 
+export async function deleteProduct(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Produkt-ID ist erforderlich");
+    }
+
+    const existing = await prisma.product.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            bookingItems: true,
+            eventProducts: true,
+            damageReports: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return actionError("Produkt nicht gefunden");
+    }
+
+    const linked =
+      existing._count.bookingItems +
+      existing._count.eventProducts +
+      existing._count.damageReports;
+
+    if (linked > 0) {
+      const product = await prisma.product.update({
+        where: { id },
+        data: { isArchived: true, status: "AUSGEMUSTERT" },
+      });
+
+      await createAuditLog({
+        userId: user.id,
+        action: "ARCHIVE",
+        entityType: "Product",
+        entityId: product.id,
+        oldValue: existing,
+        newValue: product,
+      });
+
+      revalidatePath("/produkte");
+      revalidatePath(`/produkte/${id}`);
+      return actionSuccess(product);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.productImage.deleteMany({ where: { productId: id } });
+      await tx.productDocument.deleteMany({ where: { productId: id } });
+      await tx.productAccessory.deleteMany({ where: { productId: id } });
+      await tx.productCompatibility.deleteMany({
+        where: { OR: [{ productAId: id }, { productBId: id }] },
+      });
+      await tx.customerProductPrice.deleteMany({ where: { productId: id } });
+      await tx.maintenance.deleteMany({ where: { productId: id } });
+      await tx.conditionReport.deleteMany({ where: { productId: id } });
+      await tx.locationHistory.deleteMany({ where: { productId: id } });
+      await tx.statusHistory.deleteMany({ where: { productId: id } });
+      await tx.product.delete({ where: { id } });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Product",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/produkte");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Produkt konnte nicht gelöscht werden");
+  }
+}
+
 export async function uploadProductImage(productId: string, formData: FormData) {
   try {
     const user = await requireAuth();

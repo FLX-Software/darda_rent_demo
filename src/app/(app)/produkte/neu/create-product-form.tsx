@@ -6,6 +6,7 @@ import Image from "next/image";
 import { ProductCondition } from "@prisma/client";
 import { ImagePlus, X } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,7 +19,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createProductFromForm, updateProductFromForm } from "@/lib/actions/products";
+import {
+  createProductFromForm,
+  deleteProduct,
+  updateProductFromForm,
+} from "@/lib/actions/products";
 import { productConditionLabels } from "@/lib/labels";
 import { CreateCategoryDialog } from "@/components/products/create-category-dialog";
 
@@ -369,7 +374,7 @@ export function CreateProductForm({
 
             {error && <p className="text-sm text-status-damage">{error}</p>}
 
-            <div className="flex gap-3 pt-2">
+            <div className="flex flex-wrap items-center gap-3 pt-2">
               <Button type="submit" disabled={loading}>
                 {loading
                   ? isEdit
@@ -382,6 +387,24 @@ export function CreateProductForm({
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Abbrechen
               </Button>
+              {isEdit && initial && (
+                <div className="ml-auto">
+                  <ConfirmDeleteButton
+                    entityLabel="Produkt"
+                    entityName={initial.name}
+                    description={
+                      <>
+                        Möchten Sie das Produkt{" "}
+                        <span className="font-semibold text-flx-navy">{initial.name}</span> wirklich
+                        löschen? Bei vorhandenen Buchungen oder Schäden wird es nur aus dem aktiven
+                        Bestand entfernt.
+                      </>
+                    }
+                    onDelete={() => deleteProduct(initial.id)}
+                    redirectTo="/produkte"
+                  />
+                </div>
+              )}
             </div>
           </form>
         </CardContent>

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { EventStatus, EventType } from "@prisma/client";
 import { PageHeader } from "@/components/shared/page-header";
+import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createEvent, updateEvent } from "@/lib/actions/events";
+import { createEvent, deleteEvent, updateEvent } from "@/lib/actions/events";
 import { eventStatusLabels, eventTypeLabels } from "@/lib/labels";
 
 export type EventFormValues = {
@@ -162,8 +163,8 @@ export function EventForm({ mode, initial }: EventFormProps) {
         title={mode === "edit" ? "Veranstaltung bearbeiten" : "Neue Veranstaltung"}
         description={
           mode === "edit"
-            ? "Daten der Messe oder Demo anpassen"
-            : "Messe, Demo oder Vorführung anlegen"
+            ? "Daten der Messe anpassen"
+            : "Messe oder Vorführung anlegen"
         }
         backHref={backHref}
       />
@@ -369,7 +370,7 @@ export function EventForm({ mode, initial }: EventFormProps) {
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={loading}>
                 {loading
                   ? "Wird gespeichert…"
@@ -380,6 +381,16 @@ export function EventForm({ mode, initial }: EventFormProps) {
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Abbrechen
               </Button>
+              {mode === "edit" && initial?.id && (
+                <div className="ml-auto">
+                  <ConfirmDeleteButton
+                    entityLabel="Veranstaltung"
+                    entityName={initial.name}
+                    onDelete={() => deleteEvent(initial.id)}
+                    redirectTo="/messen-demos"
+                  />
+                </div>
+              )}
             </div>
           </form>
         </CardContent>

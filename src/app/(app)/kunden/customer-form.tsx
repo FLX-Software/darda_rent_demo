@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PageHeader } from "@/components/shared/page-header";
+import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
-import { createCustomer, updateCustomer } from "@/lib/actions/customers";
+import { createCustomer, deleteCustomer, updateCustomer } from "@/lib/actions/customers";
 
 export type CustomerFormValues = {
   id: string;
@@ -242,7 +243,7 @@ export function CustomerForm({ mode = "create", initial }: CustomerFormProps) {
 
             {error && <p className="text-sm text-status-damage">{error}</p>}
 
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="submit" disabled={loading}>
                 {loading
                   ? isEdit
@@ -255,6 +256,23 @@ export function CustomerForm({ mode = "create", initial }: CustomerFormProps) {
               <Button type="button" variant="outline" onClick={() => router.back()}>
                 Abbrechen
               </Button>
+              {isEdit && initial && (
+                <div className="ml-auto">
+                  <ConfirmDeleteButton
+                    entityLabel="Kunde"
+                    entityName={initial.companyName}
+                    description={
+                      <>
+                        Möchten Sie den Kunden{" "}
+                        <span className="font-semibold text-flx-navy">{initial.companyName}</span>{" "}
+                        wirklich löschen? Bei vorhandenen Buchungen wird der Kunde nur deaktiviert.
+                      </>
+                    }
+                    onDelete={() => deleteCustomer(initial.id)}
+                    redirectTo="/kunden"
+                  />
+                </div>
+              )}
             </div>
           </form>
         </CardContent>

@@ -15,15 +15,15 @@ export default async function MessenDemosPage() {
   return (
     <div>
       <PageHeader
-        title="Messen & Demos"
-        description="Veranstaltungen, Produktvorführungen und Messeauftritte planen"
+        title="Messen"
+        description="Messeauftritte und Veranstaltungen planen"
         actions={[{ label: "Neue Veranstaltung", href: "/messen-demos/neu", icon: <Plus className="h-4 w-4" /> }]}
       />
 
       {events.length === 0 ? (
         <EmptyState
           title="Keine Veranstaltungen"
-          description="Legen Sie eine Messe, Demo oder Vorführung an."
+          description="Legen Sie eine Messe oder Veranstaltung an."
           actionLabel="Veranstaltung anlegen"
           actionHref="/messen-demos/neu"
         />

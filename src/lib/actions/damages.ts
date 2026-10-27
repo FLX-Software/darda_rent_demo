@@ -6,6 +6,7 @@ import { DamageCategory, DamageSeverity, DamageStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog, createNotification } from "@/lib/audit";
 import { requireAuth } from "@/lib/session";
+import { saveFile } from "@/lib/storage";
 import { generateDamageNumber } from "@/lib/utils";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
@@ -302,6 +303,154 @@ export async function updateDamage(id: string, input: z.infer<typeof updateDamag
     return actionSuccess(damage);
   } catch {
     return actionError("Schadensmeldung konnte nicht aktualisiert werden");
+  }
+}
+
+export async function uploadDamageImage(damageId: string, formData: FormData) {
+  try {
+    const user = await requireAuth();
+
+    if (!damageId) {
+      return actionError("Schadens-ID ist erforderlich");
+    }
+
+    const file = formData.get("file");
+    if (!file || !(file instanceof File) || file.size === 0) {
+      return actionError("Keine gültige Datei hochgeladen");
+    }
+
+    if (!file.type.startsWith("image/")) {
+      return actionError("Nur Bilddateien sind erlaubt");
+    }
+
+    const damage = await prisma.damageReport.findUnique({ where: { id: damageId } });
+    if (!damage) {
+      return actionError("Schadensmeldung nicht gefunden");
+    }
+
+    const caption = formData.get("caption")?.toString() || undefined;
+    const { url } = await saveFile(file, "damages");
+
+    const image = await prisma.damageImage.create({
+      data: {
+        damageReportId: damageId,
+        url,
+        caption,
+      },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "DamageImage",
+      entityId: image.id,
+      newValue: image,
+    });
+
+    revalidatePath("/schaeden");
+    revalidatePath(`/schaeden/${damageId}`);
+    return actionSuccess(image);
+  } catch {
+    return actionError("Schadensbild konnte nicht hochgeladen werden");
+  }
+}
+
+export async function deleteDamageImage(imageId: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!imageId) {
+      return actionError("Bild-ID ist erforderlich");
+    }
+
+    const image = await prisma.damageImage.findUnique({ where: { id: imageId } });
+    if (!image) {
+      return actionError("Bild nicht gefunden");
+    }
+
+    await prisma.damageImage.delete({ where: { id: imageId } });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "DamageImage",
+      entityId: imageId,
+      oldValue: image,
+    });
+
+    revalidatePath("/schaeden");
+    revalidatePath(`/schaeden/${image.damageReportId}`);
+    return actionSuccess({ id: imageId });
+  } catch {
+    return actionError("Schadensbild konnte nicht gelöscht werden");
+  }
+}
+
+export async function updateDamageReportNotes(damageId: string, notes: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!damageId) {
+      return actionError("Schadens-ID ist erforderlich");
+    }
+
+    const existing = await prisma.damageReport.findUnique({ where: { id: damageId } });
+    if (!existing) {
+      return actionError("Schadensmeldung nicht gefunden");
+    }
+
+    const damage = await prisma.damageReport.update({
+      where: { id: damageId },
+      data: { notes: notes.trim() || null },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "UPDATE",
+      entityType: "DamageReport",
+      entityId: damageId,
+      oldValue: { notes: existing.notes },
+      newValue: { notes: damage.notes },
+    });
+
+    revalidatePath(`/schaeden/${damageId}`);
+    return actionSuccess(damage);
+  } catch {
+    return actionError("Bericht konnte nicht gespeichert werden");
+  }
+}
+
+export async function deleteDamage(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Schadens-ID ist erforderlich");
+    }
+
+    const existing = await prisma.damageReport.findUnique({ where: { id } });
+    if (!existing) {
+      return actionError("Schadensmeldung nicht gefunden");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.damageImage.deleteMany({ where: { damageReportId: id } });
+      await tx.damageStatusHistory.deleteMany({ where: { damageReportId: id } });
+      await tx.damageReport.delete({ where: { id } });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "DamageReport",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/schaeden");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Schadensmeldung konnte nicht gelöscht werden");
   }
 }
 

@@ -148,6 +148,72 @@ export async function updateLocation(
   }
 }
 
+export async function deleteLocation(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Standort-ID ist erforderlich");
+    }
+
+    const existing = await prisma.location.findUnique({
+      where: { id },
+      include: {
+        _count: {
+          select: {
+            products: true,
+            bookingsPickup: true,
+            bookingsDelivery: true,
+          },
+        },
+      },
+    });
+
+    if (!existing) {
+      return actionError("Standort nicht gefunden");
+    }
+
+    const linked =
+      existing._count.products +
+      existing._count.bookingsPickup +
+      existing._count.bookingsDelivery;
+
+    if (linked > 0) {
+      const location = await prisma.location.update({
+        where: { id },
+        data: { isActive: false },
+      });
+
+      await createAuditLog({
+        userId: user.id,
+        action: "UPDATE",
+        entityType: "Location",
+        entityId: location.id,
+        oldValue: existing,
+        newValue: location,
+      });
+
+      revalidatePath("/standorte");
+      return actionSuccess(location);
+    }
+
+    await prisma.location.delete({ where: { id } });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Location",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/standorte");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Standort konnte nicht gelöscht werden");
+  }
+}
+
 /** Alias für bestehende Seiten */
 export async function getLocationsList() {
   const result = await getLocations({ includeInactive: true });

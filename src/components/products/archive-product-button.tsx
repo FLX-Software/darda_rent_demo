@@ -1,10 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { Archive } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { archiveProduct } from "@/lib/actions/products";
+import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button";
+import { deleteProduct } from "@/lib/actions/products";
 
 export function ArchiveProductButton({
   productId,
@@ -13,25 +10,19 @@ export function ArchiveProductButton({
   productId: string;
   productName: string;
 }) {
-  const router = useRouter();
-  const [loading, setLoading] = useState(false);
-
-  async function handleArchive() {
-    if (!confirm(`Produkt „${productName}“ archivieren?`)) return;
-    setLoading(true);
-    const result = await archiveProduct(productId);
-    setLoading(false);
-    if (!result.success) {
-      alert(result.error ?? "Archivieren fehlgeschlagen.");
-      return;
-    }
-    router.push("/produkte");
-  }
-
   return (
-    <Button variant="outline" disabled={loading} onClick={handleArchive}>
-      <Archive className="mr-2 h-4 w-4" />
-      Archivieren
-    </Button>
+    <ConfirmDeleteButton
+      entityLabel="Produkt"
+      entityName={productName}
+      description={
+        <>
+          Möchten Sie das Produkt{" "}
+          <span className="font-semibold text-flx-navy">{productName}</span> wirklich löschen? Bei
+          vorhandenen Buchungen oder Schäden wird es nur aus dem aktiven Bestand entfernt.
+        </>
+      }
+      onDelete={() => deleteProduct(productId)}
+      redirectTo="/produkte"
+    />
   );
 }

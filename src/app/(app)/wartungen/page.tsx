@@ -53,40 +53,42 @@ export default async function WartungenPage() {
                 </thead>
                 <tbody>
                   {maintenances.map((m) => (
-                    <tr key={m.id} className="border-t border-gray-100">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/produkte/${m.productId}`}
-                          className="font-medium text-flx-blue hover:underline"
-                        >
-                          {m.product.name}
+                    <tr key={m.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="p-0">
+                        <Link href={`/wartungen/${m.id}`} className="block px-4 py-3">
+                          <span className="font-medium text-flx-blue hover:underline">
+                            {m.product.name}
+                          </span>
+                          <div className="text-xs text-gray-400">{m.product.inventoryNumber}</div>
                         </Link>
-                        <div className="text-xs text-gray-400">
-                          {m.product.inventoryNumber}
-                        </div>
                       </td>
-                      <td className="px-4 py-3">{maintenanceTypeLabels[m.type]}</td>
-                      <td className="px-4 py-3">
-                        <Badge
-                          variant={
-                            m.status === "UEBERFAELLIG" || m.status === "FAELLIG"
-                              ? "warning"
-                              : m.status === "ABGESCHLOSSEN"
-                                ? "success"
-                                : "secondary"
-                          }
-                        >
-                          {maintenanceStatusLabels[m.status]}
-                        </Badge>
+                      <td className="p-0">
+                        <Link href={`/wartungen/${m.id}`} className="block px-4 py-3 text-gray-700">
+                          {maintenanceTypeLabels[m.type]}
+                        </Link>
                       </td>
-                      <td className="px-4 py-3">
-                        {m.nextDate ? formatDate(m.nextDate) : "—"}
+                      <td className="p-0">
+                        <Link href={`/wartungen/${m.id}`} className="block px-4 py-3">
+                          <Badge
+                            variant={
+                              m.status === "UEBERFAELLIG" || m.status === "FAELLIG"
+                                ? "warning"
+                                : m.status === "ABGESCHLOSSEN"
+                                  ? "success"
+                                  : "secondary"
+                            }
+                          >
+                            {maintenanceStatusLabels[m.status]}
+                          </Badge>
+                        </Link>
+                      </td>
+                      <td className="p-0">
+                        <Link href={`/wartungen/${m.id}`} className="block px-4 py-3">
+                          {m.nextDate ? formatDate(m.nextDate) : "—"}
+                        </Link>
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <MaintenanceActions
-                          id={m.id}
-                          status={m.status}
-                        />
+                        <MaintenanceActions id={m.id} status={m.status} />
                       </td>
                     </tr>
                   ))}

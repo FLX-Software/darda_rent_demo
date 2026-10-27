@@ -53,6 +53,10 @@ export function CreateMaintenanceForm({
     }
     setOpen(false);
     setProductId("");
+    if (result.data?.id) {
+      router.push(`/wartungen/${result.data.id}`);
+      return;
+    }
     router.refresh();
   }
 

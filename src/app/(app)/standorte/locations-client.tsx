@@ -6,6 +6,7 @@ import { LocationType } from "@prisma/client";
 import { MapPin, Pencil, Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { EmptyState } from "@/components/shared/empty-state";
+import { ConfirmDeleteButton } from "@/components/shared/confirm-delete-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createLocation, updateLocation } from "@/lib/actions/locations";
+import { createLocation, deleteLocation, updateLocation } from "@/lib/actions/locations";
 import { locationTypeLabels } from "@/lib/labels";
 
 type LocationRow = {
@@ -167,13 +168,30 @@ export function LocationsClient({ locations }: { locations: LocationRow[] }) {
                 </div>
               )}
               {error && <p className="text-sm text-status-damage">{error}</p>}
-              <div className="flex gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <Button type="submit" disabled={loading}>
                   {loading ? "Speichern…" : "Speichern"}
                 </Button>
                 <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                   Abbrechen
                 </Button>
+                {editing && (
+                  <div className="ml-auto">
+                    <ConfirmDeleteButton
+                      entityLabel="Standort"
+                      entityName={editing.name}
+                      description={
+                        <>
+                          Möchten Sie den Standort{" "}
+                          <span className="font-semibold text-flx-navy">{editing.name}</span> wirklich
+                          löschen? Bei verknüpften Produkten oder Buchungen wird er nur deaktiviert.
+                        </>
+                      }
+                      onDelete={() => deleteLocation(editing.id)}
+                      onDeleted={() => setOpen(false)}
+                    />
+                  </div>
+                )}
               </div>
             </form>
           </CardContent>

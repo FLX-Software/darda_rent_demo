@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { BookingStatus, BookingType, ShipmentMethod } from "@prisma/client";
 import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
+import { DeleteBookingButton } from "@/components/bookings/delete-booking-button";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -389,6 +390,13 @@ export function CreateBookingForm({
                     ? "Änderungen speichern"
                     : "Buchung anlegen"}
               </Button>
+              {isEdit && initial && (
+                <DeleteBookingButton
+                  bookingId={initial.id}
+                  bookingNumber={initial.bookingNumber}
+                  className="w-full"
+                />
+              )}
               {error && <p className="text-sm text-status-damage">{error}</p>}
             </CardContent>
           </Card>

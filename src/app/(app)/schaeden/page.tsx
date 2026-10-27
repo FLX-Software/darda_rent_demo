@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Plus, AlertTriangle } from "lucide-react";
 import { getDamages } from "@/lib/actions/damages";
 import { unwrapAction } from "@/lib/actions/types";
 import { PageHeader } from "@/components/shared/page-header";
@@ -11,7 +11,6 @@ import {
   damageStatusLabels,
 } from "@/lib/labels";
 import { formatDate } from "@/lib/utils";
-import { AlertTriangle } from "lucide-react";
 
 export default async function SchaedenPage() {
   const reports = unwrapAction(await getDamages(), []);
@@ -47,28 +46,47 @@ export default async function SchaedenPage() {
             <tbody>
               {reports.map((r) => (
                 <tr key={r.id} className="border-t border-gray-100 hover:bg-gray-50">
-                  <td className="px-4 py-3">
-                    <Link href={`/schaeden/${r.id}`} className="font-mono text-flx-blue hover:underline">
+                  <td className="p-0">
+                    <Link
+                      href={`/schaeden/${r.id}`}
+                      className="block px-4 py-3 font-mono text-flx-blue hover:underline"
+                    >
                       {r.damageNumber}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 font-medium">{r.product.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{damageCategoryLabels[r.category]}</td>
-                  <td className="px-4 py-3">
-                    <Badge
-                      variant={
-                        r.severity === "SICHERHEITSRELEVANT" || r.severity === "SCHWER"
-                          ? "danger"
-                          : "warning"
-                      }
-                    >
-                      {damageSeverityLabels[r.severity]}
-                    </Badge>
+                  <td className="p-0">
+                    <Link href={`/schaeden/${r.id}`} className="block px-4 py-3 font-medium text-gray-900">
+                      {r.product.name}
+                    </Link>
                   </td>
-                  <td className="px-4 py-3">
-                    <Badge variant="secondary">{damageStatusLabels[r.status]}</Badge>
+                  <td className="p-0">
+                    <Link href={`/schaeden/${r.id}`} className="block px-4 py-3 text-gray-500">
+                      {damageCategoryLabels[r.category]}
+                    </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{formatDate(r.reportedAt)}</td>
+                  <td className="p-0">
+                    <Link href={`/schaeden/${r.id}`} className="block px-4 py-3">
+                      <Badge
+                        variant={
+                          r.severity === "SICHERHEITSRELEVANT" || r.severity === "SCHWER"
+                            ? "danger"
+                            : "warning"
+                        }
+                      >
+                        {damageSeverityLabels[r.severity]}
+                      </Badge>
+                    </Link>
+                  </td>
+                  <td className="p-0">
+                    <Link href={`/schaeden/${r.id}`} className="block px-4 py-3">
+                      <Badge variant="secondary">{damageStatusLabels[r.status]}</Badge>
+                    </Link>
+                  </td>
+                  <td className="p-0">
+                    <Link href={`/schaeden/${r.id}`} className="block px-4 py-3 text-gray-500">
+                      {formatDate(r.reportedAt)}
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

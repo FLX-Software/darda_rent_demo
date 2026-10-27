@@ -65,6 +65,7 @@ export async function getMaintenances(filters?: z.infer<typeof maintenanceFilter
       include: {
         product: { include: { category: true } },
         performedBy: true,
+        documents: true,
       },
       orderBy: [{ nextDate: "asc" }, { createdAt: "desc" }],
     });
@@ -72,6 +73,33 @@ export async function getMaintenances(filters?: z.infer<typeof maintenanceFilter
     return actionSuccess(maintenances);
   } catch {
     return actionError("Wartungen konnten nicht geladen werden");
+  }
+}
+
+export async function getMaintenance(id: string) {
+  try {
+    await requireAuth();
+
+    if (!id) {
+      return actionError("Wartungs-ID ist erforderlich");
+    }
+
+    const maintenance = await prisma.maintenance.findUnique({
+      where: { id },
+      include: {
+        product: { include: { category: true, location: true } },
+        performedBy: true,
+        documents: true,
+      },
+    });
+
+    if (!maintenance) {
+      return actionError("Wartung nicht gefunden");
+    }
+
+    return actionSuccess(maintenance);
+  } catch {
+    return actionError("Wartung konnte nicht geladen werden");
   }
 }
 
@@ -150,6 +178,7 @@ export async function createMaintenance(input: z.infer<typeof createMaintenanceS
     });
 
     revalidatePath("/wartungen");
+    revalidatePath(`/wartungen/${maintenance.id}`);
     revalidatePath("/produkte");
     return actionSuccess(maintenance);
   } catch {
@@ -238,10 +267,45 @@ export async function updateMaintenance(
     });
 
     revalidatePath("/wartungen");
+    revalidatePath(`/wartungen/${id}`);
     revalidatePath("/produkte");
     return actionSuccess(maintenance);
   } catch {
     return actionError("Wartung konnte nicht aktualisiert werden");
+  }
+}
+
+export async function deleteMaintenance(id: string) {
+  try {
+    const user = await requireAuth();
+
+    if (!id) {
+      return actionError("Wartungs-ID ist erforderlich");
+    }
+
+    const existing = await prisma.maintenance.findUnique({ where: { id } });
+    if (!existing) {
+      return actionError("Wartung nicht gefunden");
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.maintenanceDocument.deleteMany({ where: { maintenanceId: id } });
+      await tx.maintenance.delete({ where: { id } });
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "DELETE",
+      entityType: "Maintenance",
+      entityId: id,
+      oldValue: existing,
+    });
+
+    revalidatePath("/wartungen");
+    revalidatePath("/produkte");
+    return actionSuccess({ id });
+  } catch {
+    return actionError("Wartung konnte nicht gelöscht werden");
   }
 }
 
