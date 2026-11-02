@@ -31,9 +31,6 @@ export type Permission =
   | "checkout.perform"
   | "checkin.view"
   | "checkin.perform"
-  | "damages.view"
-  | "damages.create"
-  | "damages.edit"
   | "maintenance.view"
   | "maintenance.edit"
   | "locations.view"
@@ -52,7 +49,6 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "customers.view", "customers.create", "customers.edit",
     "events.view", "events.create", "events.edit",
     "checkout.view", "checkout.perform", "checkin.view", "checkin.perform",
-    "damages.view", "damages.create", "damages.edit",
     "maintenance.view", "maintenance.edit",
     "locations.view", "locations.edit",
     "reports.view", "users.view", "users.edit", "settings.view", "settings.edit",
@@ -64,29 +60,27 @@ const rolePermissions: Record<UserRole, Permission[]> = {
     "customers.view", "customers.create", "customers.edit",
     "events.view", "events.create", "events.edit",
     "checkout.view", "checkin.view",
-    "damages.view", "damages.create",
     "maintenance.view", "locations.view", "reports.view",
   ],
   LAGER: [
     "dashboard.view", "planning.view",
     "products.view", "bookings.view",
     "checkout.view", "checkout.perform", "checkin.view", "checkin.perform",
-    "damages.view", "damages.create",
     "locations.view", "locations.edit",
   ],
   AUSSENDIENST: [
     "dashboard.view", "planning.view", "products.view",
-    "bookings.view", "damages.view", "damages.create",
+    "bookings.view",
   ],
   SERVICE: [
     "dashboard.view", "products.view", "bookings.view",
-    "damages.view", "damages.edit", "maintenance.view", "maintenance.edit",
+    "maintenance.view", "maintenance.edit",
     "reports.view",
   ],
   LESEND: [
     "dashboard.view", "planning.view",
     "products.view", "bookings.view", "customers.view",
-    "events.view", "damages.view", "maintenance.view",
+    "events.view", "maintenance.view",
     "locations.view", "reports.view",
   ],
 };
@@ -104,7 +98,6 @@ export function canAccessRoute(role: UserRole, route: string): boolean {
     "/kunden": "customers.view",
     "/messen-demos": "events.view",
     "/ausgaben-rueckgaben": "checkout.view",
-    "/schaeden": "damages.view",
     "/wartungen": "maintenance.view",
     "/standorte": "locations.view",
     "/berichte": "reports.view",

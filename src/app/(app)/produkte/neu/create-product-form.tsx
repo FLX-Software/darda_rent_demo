@@ -32,9 +32,7 @@ export type ProductFormValues = {
   name: string;
   model: string;
   inventoryNumber: string;
-  serialNumber: string;
   categoryId: string;
-  locationId?: string | null;
   condition: ProductCondition;
   dailyRateCents: number;
   yearBuilt?: number | null;
@@ -46,14 +44,12 @@ export type ProductFormValues = {
 
 interface CreateProductFormProps {
   categories: { id: string; name: string }[];
-  locations: { id: string; name: string }[];
   mode?: "create" | "edit";
   initial?: ProductFormValues;
 }
 
 export function CreateProductForm({
   categories: initialCategories,
-  locations,
   mode = "create",
   initial,
 }: CreateProductFormProps) {
@@ -64,7 +60,6 @@ export function CreateProductForm({
   const [error, setError] = useState("");
   const [categories, setCategories] = useState(initialCategories);
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
-  const [locationId, setLocationId] = useState(initial?.locationId ?? "");
   const [condition, setCondition] = useState<ProductCondition>(initial?.condition ?? "GUT");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(initial?.imageUrl ?? null);
@@ -95,7 +90,6 @@ export function CreateProductForm({
 
     const fd = new FormData(e.currentTarget);
     fd.set("categoryId", categoryId);
-    fd.set("locationId", locationId);
     fd.set("condition", condition);
     if (imageFile) {
       fd.set("image", imageFile);
@@ -201,9 +195,6 @@ export function CreateProductForm({
                       </button>
                     </div>
                   )}
-                  <p className="text-xs text-gray-400">
-                    Das Bild wird als Hauptbild des Produkts gespeichert.
-                  </p>
                 </div>
               </div>
             </div>
@@ -216,24 +207,11 @@ export function CreateProductForm({
                   name="name"
                   required
                   defaultValue={initial?.name}
-                  placeholder="z.B. Darda MC300 Zange"
+                  placeholder="z.B. Multi Cutter"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="model">Modell *</Label>
-                <Input
-                  id="model"
-                  name="model"
-                  required
-                  defaultValue={initial?.model}
-                  placeholder="z.B. MC300"
-                />
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="inventoryNumber">Inventarnummer *</Label>
+                <Label htmlFor="inventoryNumber">Seriennummer *</Label>
                 <Input
                   id="inventoryNumber"
                   name="inventoryNumber"
@@ -242,18 +220,19 @@ export function CreateProductForm({
                   placeholder="DARDA-MC300-002"
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="serialNumber">Seriennummer *</Label>
-                <Input
-                  id="serialNumber"
-                  name="serialNumber"
-                  required
-                  defaultValue={initial?.serialNumber}
-                />
-              </div>
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="model">Artikelnummer *</Label>
+                <Input
+                  id="model"
+                  name="model"
+                  required
+                  defaultValue={initial?.model}
+                  placeholder="z.B. MC300"
+                />
+              </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label htmlFor="categoryId">Kategorie *</Label>
@@ -272,21 +251,6 @@ export function CreateProductForm({
                     {categories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="locationId">Standort</Label>
-                <Select value={locationId || undefined} onValueChange={setLocationId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Standort wählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {locations.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -396,7 +360,7 @@ export function CreateProductForm({
                       <>
                         Möchten Sie das Produkt{" "}
                         <span className="font-semibold text-flx-navy">{initial.name}</span> wirklich
-                        löschen? Bei vorhandenen Buchungen oder Schäden wird es nur aus dem aktiven
+                        löschen? Bei vorhandenen Buchungen wird es nur aus dem aktiven
                         Bestand entfernt.
                       </>
                     }

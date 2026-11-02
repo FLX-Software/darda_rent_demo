@@ -69,7 +69,7 @@ export function ProductsList({ products, categories }: ProductsListProps) {
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <SearchInput value={search} onChange={setSearch} placeholder="Name, Inventarnr., Modell…" className="w-64" />
+        <SearchInput value={search} onChange={setSearch} placeholder="Name, Seriennr., Artikelnr.…" className="w-64" />
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-52">
             <SelectValue placeholder="Status" />
@@ -126,12 +126,11 @@ export function ProductsList({ products, categories }: ProductsListProps) {
           <table className="w-full text-sm">
             <thead className="bg-gray-50">
               <tr className="text-left text-gray-500">
-                <th className="px-4 py-3 font-medium">Inventarnr.</th>
+                <th className="px-4 py-3 font-medium">Seriennr.</th>
                 <th className="px-4 py-3 font-medium">Produkt</th>
-                <th className="px-4 py-3 font-medium">Modell</th>
+                <th className="px-4 py-3 font-medium">Artikelnr.</th>
                 <th className="px-4 py-3 font-medium">Kategorie</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Standort</th>
                 <th className="px-4 py-3 font-medium">Tagessatz</th>
                 <th className="px-4 py-3 font-medium text-right">Aktionen</th>
               </tr>
@@ -147,12 +146,11 @@ export function ProductsList({ products, categories }: ProductsListProps) {
                     {p.inventoryNumber}
                   </td>
                   <td className="px-4 py-3 font-medium">{p.name}</td>
-                  <td className="px-4 py-3 text-gray-500">{p.model}</td>
+                  <td className="px-4 py-3 font-mono text-gray-500">{p.model}</td>
                   <td className="px-4 py-3 text-gray-500">{p.category.name}</td>
                   <td className="px-4 py-3">
                     <ProductBookingTypeBadge type={p.displayBookingType} />
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{p.location?.name ?? "—"}</td>
                   <td className="px-4 py-3">{formatCurrency(p.dailyRateCents)}</td>
                   <td className="px-4 py-3">
                     <div

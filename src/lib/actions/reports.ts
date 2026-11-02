@@ -69,7 +69,7 @@ export async function getReportData(year?: number) {
   const yearStart = startOfYear(new Date(selectedYear, 0, 1));
   const yearEnd = endOfYear(yearStart);
 
-  const [bookings, damages, products] = await Promise.all([
+  const [bookings, products] = await Promise.all([
     prisma.booking.findMany({
       where: {
         isArchived: false,
@@ -93,11 +93,6 @@ export async function getReportData(year?: number) {
           },
         },
       },
-    }),
-    prisma.damageReport.groupBy({
-      by: ["category"],
-      _count: true,
-      _sum: { actualCostCents: true },
     }),
     prisma.product.findMany({
       where: { isArchived: false },
@@ -166,11 +161,37 @@ export async function getReportData(year?: number) {
     );
   }
 
+  const topProductMap = new Map<
+    string,
+    { name: string; inventoryNumber: string; revenue: number; bookings: number }
+  >();
+  for (const monthProducts of productRevenueByMonth) {
+    for (const item of monthProducts) {
+      const existing = topProductMap.get(item.productId);
+      if (existing) {
+        existing.revenue += item.revenue;
+        existing.bookings += item.bookings;
+      } else {
+        topProductMap.set(item.productId, {
+          name: item.name,
+          inventoryNumber: item.inventoryNumber,
+          revenue: item.revenue,
+          bookings: item.bookings,
+        });
+      }
+    }
+  }
+
+  const topProducts = Array.from(topProductMap.entries())
+    .map(([productId, data]) => ({ productId, ...data }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, 8);
+
   return {
     year: selectedYear,
     monthlyRevenue,
     productRevenueByMonth,
-    damages,
+    topProducts,
     utilization,
   };
 }

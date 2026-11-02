@@ -149,7 +149,7 @@ export function CreateBookingForm({
         description={
           isEdit
             ? initial!.bookingNumber
-            : "Vermietung, Messe, Demo oder internen Einsatz planen"
+            : "Vermietung, Demo oder internen Einsatz planen"
         }
         backHref={isEdit ? `/buchungen/${initial!.id}` : "/buchungen"}
       />

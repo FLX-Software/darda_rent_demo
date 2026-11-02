@@ -182,8 +182,12 @@ export async function getBookings(filters?: z.infer<typeof bookingFiltersSchema>
           : {}),
       },
       include: {
-        customer: true,
-        items: { include: { product: true } },
+        customer: { select: { companyName: true } },
+        items: {
+          include: {
+            product: { select: { name: true } },
+          },
+        },
       },
       orderBy: { startDate: "asc" },
     });
@@ -321,7 +325,7 @@ export async function createBooking(input: z.input<typeof createBookingSchema>) 
     revalidatePath("/buchungen");
     revalidatePath("/planung");
     revalidatePath("/produkte");
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient({ id: booking.id, bookingNumber: booking.bookingNumber }));
   } catch {
     return actionError("Buchung konnte nicht erstellt werden");
   }
@@ -466,7 +470,7 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
     revalidatePath("/buchungen");
     revalidatePath("/planung");
     revalidatePath(`/buchungen/${id}`);
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient({ id: booking.id, bookingNumber: booking.bookingNumber }));
   } catch (error) {
     console.error("updateBooking failed:", error);
     return actionError("Buchung konnte nicht aktualisiert werden");
@@ -534,7 +538,7 @@ export async function advanceBookingStatus(id: string) {
     revalidatePath("/ausgaben-rueckgaben");
     revalidatePath("/planung");
     revalidatePath("/produkte");
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient({ id: booking.id, status: booking.status }));
   } catch {
     return actionError("Status konnte nicht aktualisiert werden");
   }
@@ -624,13 +628,13 @@ export async function updateBookingDates(
 
     if (!availability.available) {
       return actionSuccess({
-        booking,
+        bookingId: booking.id,
         conflicts: availability.conflicts.length,
       });
     }
 
     return actionSuccess({
-      booking,
+      bookingId: booking.id,
       conflicts: 0,
     });
   } catch {
@@ -685,7 +689,7 @@ export async function archiveBooking(id: string) {
 
     revalidatePath("/buchungen");
     revalidatePath("/planung");
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient({ id: booking.id, isArchived: booking.isArchived }));
   } catch {
     return actionError("Buchung konnte nicht archiviert werden");
   }
@@ -742,7 +746,7 @@ export async function cancelBooking(id: string) {
     revalidatePath("/buchungen");
     revalidatePath("/planung");
     revalidatePath(`/buchungen/${id}`);
-    return actionSuccess(booking);
+    return actionSuccess(serializeForClient({ id: booking.id, isArchived: booking.isArchived }));
   } catch {
     return actionError("Buchung konnte nicht gelöscht werden");
   }
@@ -785,8 +789,19 @@ export async function getBookingsForCheckout() {
       status: { in: CHECKOUT_READY_STATUSES },
     },
     include: {
-      customer: true,
-      items: { include: { product: true } },
+      customer: { select: { companyName: true } },
+      items: {
+        include: {
+          product: {
+            select: {
+              id: true,
+              name: true,
+              inventoryNumber: true,
+              condition: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { startDate: "asc" },
   });

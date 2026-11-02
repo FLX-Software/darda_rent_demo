@@ -9,6 +9,8 @@ import { createAuditLog } from "@/lib/audit";
 import { getProductStatusForBookingType } from "@/lib/availability";
 import { requireAuth } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
+import { saveFile } from "@/lib/storage";
+import { serializeForClient } from "@/lib/utils";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const CHECKOUT_STATUSES: BookingStatus[] = ["ABHOLBEREIT", "IN_VORBEREITUNG", "BESTAETIGT"];
@@ -28,6 +30,12 @@ const checkOutItemSchema = z.object({
   notes: z.string().optional(),
 });
 
+const checkOutImageSchema = z.object({
+  productId: z.string().min(1),
+  url: z.string().min(1),
+  caption: z.string().optional(),
+});
+
 const performCheckOutSchema = z.object({
   bookingId: z.string().min(1, "Buchungs-ID ist erforderlich"),
   recipientName: z.string().optional(),
@@ -35,14 +43,20 @@ const performCheckOutSchema = z.object({
   notes: z.string().optional(),
   operatingHours: z.number().int().min(0).optional(),
   items: z.array(checkOutItemSchema).min(1, "Mindestens ein Produkt erforderlich"),
+  images: z.array(checkOutImageSchema).optional(),
 });
 
 const checkInItemSchema = z.object({
   productId: z.string().min(1, "Produkt ist erforderlich"),
   condition: z.nativeEnum(ProductCondition),
   missingAccessories: z.string().optional(),
-  damageNoted: z.boolean().default(false),
   notes: z.string().optional(),
+});
+
+const checkInImageSchema = z.object({
+  productId: z.string().min(1),
+  url: z.string().min(1),
+  caption: z.string().optional(),
 });
 
 const performCheckInSchema = z.object({
@@ -50,7 +64,9 @@ const performCheckInSchema = z.object({
   cleaningCostCents: z.number().int().min(0).default(0),
   repairCostCents: z.number().int().min(0).default(0),
   notes: z.string().optional(),
+  createProtocol: z.boolean().default(false),
   items: z.array(checkInItemSchema).min(1, "Mindestens ein Produkt erforderlich"),
+  images: z.array(checkInImageSchema).optional(),
 });
 
 export async function getPendingCheckouts() {
@@ -89,12 +105,14 @@ export async function getPendingCheckouts() {
       }),
     ]);
 
-    return actionSuccess({
-      checkouts: pendingCheckouts,
-      checkins: pendingCheckins,
-      todayStart,
-      todayEnd,
-    });
+    return actionSuccess(
+      serializeForClient({
+        checkouts: pendingCheckouts,
+        checkins: pendingCheckins,
+        todayStart,
+        todayEnd,
+      })
+    );
   } catch {
     return actionError("Ausstehende Ausgaben/Rückgaben konnten nicht geladen werden");
   }
@@ -193,12 +211,25 @@ export async function performCheckOut(input: z.infer<typeof performCheckOutSchem
           },
         });
 
+        const imagesForProduct = (data.images ?? []).filter(
+          (image) => image.productId === item.productId
+        );
+
         await tx.conditionReport.create({
           data: {
             productId: item.productId,
             condition: item.condition,
             notes: item.notes,
             checkOutId: checkOut.id,
+            images:
+              imagesForProduct.length > 0
+                ? {
+                    create: imagesForProduct.map((image) => ({
+                      url: image.url,
+                      caption: image.caption,
+                    })),
+                  }
+                : undefined,
           },
         });
       }
@@ -217,8 +248,15 @@ export async function performCheckOut(input: z.infer<typeof performCheckOutSchem
 
     revalidatePath("/ausgaben-rueckgaben");
     revalidatePath("/buchungen");
+    revalidatePath(`/buchungen/${booking.id}`);
     revalidatePath("/produkte");
-    return actionSuccess(result);
+    return actionSuccess(
+      serializeForClient({
+        checkOutId: result.checkOut.id,
+        bookingId: result.booking.id,
+        status: result.booking.status,
+      })
+    );
   } catch {
     return actionError("Ausgabe konnte nicht durchgeführt werden");
   }
@@ -259,8 +297,17 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
       return actionError("Ein oder mehrere Produkte gehören nicht zu dieser Buchung");
     }
 
-    const hasDamage = data.items.some((item) => item.damageNoted);
-    const newBookingStatus: BookingStatus = hasDamage ? "IN_PRUEFUNG" : "ZURUECKGEGEBEN";
+    const newBookingStatus: BookingStatus = "ZURUECKGEGEBEN";
+    const returnedAt = new Date();
+    const returnDay = startOfDay(returnedAt);
+    const startDay = startOfDay(booking.startDate);
+    const plannedDay = startOfDay(booking.plannedReturnDate);
+    const shortenedEarly =
+      returnDay.getTime() < plannedDay.getTime()
+        ? returnDay.getTime() < startDay.getTime()
+          ? startDay
+          : returnDay
+        : null;
 
     const result = await prisma.$transaction(async (tx) => {
       const checkIn = await tx.checkIn.create({
@@ -275,7 +322,7 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
               productId: item.productId,
               condition: item.condition,
               missingAccessories: item.missingAccessories,
-              damageNoted: item.damageNoted,
+              damageNoted: false,
               notes: item.notes,
             })),
           },
@@ -287,7 +334,10 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
         where: { id: data.bookingId },
         data: {
           status: newBookingStatus,
-          actualReturnAt: new Date(),
+          actualReturnAt: returnedAt,
+          ...(shortenedEarly
+            ? { plannedReturnDate: shortenedEarly }
+            : {}),
         },
       });
 
@@ -295,7 +345,7 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
         const product = await tx.product.findUnique({ where: { id: item.productId } });
         if (!product) continue;
 
-        const newProductStatus = item.damageNoted ? "IN_PRUEFUNG" : "VERFUEGBAR";
+        const newProductStatus = "VERFUEGBAR";
 
         await tx.product.update({
           where: { id: item.productId },
@@ -312,9 +362,15 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
             fromStatus: product.status,
             toStatus: newProductStatus,
             changedById: user.id,
-            note: `Rückgabe Buchung ${booking.bookingNumber}`,
+            note: shortenedEarly
+              ? `Rücknahme Buchung ${booking.bookingNumber} (früher zurück – Planung bis ${shortenedEarly.toISOString().slice(0, 10)} verkürzt)`
+              : `Rücknahme Buchung ${booking.bookingNumber}`,
           },
         });
+
+        const imagesForProduct = (data.images ?? []).filter(
+          (image) => image.productId === item.productId
+        );
 
         await tx.conditionReport.create({
           data: {
@@ -322,11 +378,26 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
             condition: item.condition,
             notes: item.notes,
             checkInId: checkIn.id,
+            images:
+              data.createProtocol && imagesForProduct.length > 0
+                ? {
+                    create: imagesForProduct.map((image) => ({
+                      url: image.url,
+                      caption: image.caption,
+                    })),
+                  }
+                : undefined,
           },
         });
       }
 
-      return { checkIn, booking: updatedBooking };
+      return {
+        checkIn,
+        booking: updatedBooking,
+        planningShortened: Boolean(shortenedEarly),
+        previousPlannedReturnDate: booking.plannedReturnDate,
+        createProtocol: data.createProtocol,
+      };
     });
 
     await createAuditLog({
@@ -334,15 +405,61 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
       action: "STATUS_CHANGE",
       entityType: "Booking",
       entityId: booking.id,
-      oldValue: { status: booking.status },
-      newValue: { status: result.booking.status, checkInId: result.checkIn.id },
+      oldValue: {
+        status: booking.status,
+        plannedReturnDate: booking.plannedReturnDate,
+      },
+      newValue: {
+        status: result.booking.status,
+        checkInId: result.checkIn.id,
+        plannedReturnDate: result.booking.plannedReturnDate,
+        planningShortened: result.planningShortened,
+      },
     });
 
     revalidatePath("/ausgaben-rueckgaben");
     revalidatePath("/buchungen");
+    revalidatePath(`/buchungen/${booking.id}`);
     revalidatePath("/produkte");
-    return actionSuccess(result);
+    revalidatePath("/planung");
+    revalidatePath("/dashboard");
+    return actionSuccess(
+      serializeForClient({
+        checkInId: result.checkIn.id,
+        bookingId: result.booking.id,
+        status: result.booking.status,
+        planningShortened: result.planningShortened,
+      })
+    );
   } catch {
     return actionError("Rückgabe konnte nicht durchgeführt werden");
+  }
+}
+
+export async function uploadCheckoutImage(formData: FormData) {
+  try {
+    const user = await requireAuth();
+    if (
+      !hasPermission(user.role, "checkout.perform") &&
+      !hasPermission(user.role, "checkin.perform")
+    ) {
+      return actionError("Keine Berechtigung für Übergabe-/Rücknahmefotos");
+    }
+
+    const file = formData.get("file");
+    if (!file || !(file instanceof File) || file.size === 0) {
+      return actionError("Keine gültige Datei hochgeladen");
+    }
+    if (!file.type.startsWith("image/")) {
+      return actionError("Nur Bilddateien sind erlaubt");
+    }
+
+    const caption = formData.get("caption")?.toString() || undefined;
+    const folder = formData.get("folder")?.toString() === "return" ? "return" : "handover";
+    const { url } = await saveFile(file, folder);
+
+    return actionSuccess({ url, caption });
+  } catch {
+    return actionError("Foto konnte nicht hochgeladen werden");
   }
 }

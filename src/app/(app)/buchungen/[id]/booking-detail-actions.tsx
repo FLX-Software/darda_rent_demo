@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { BookingStatus } from "@prisma/client";
-import { Archive, ArrowRight, Pencil } from "lucide-react";
+import { Archive, ArrowRight, FileDown, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DeleteBookingButton } from "@/components/bookings/delete-booking-button";
 import { advanceBookingStatus, archiveBooking } from "@/lib/actions/bookings";
@@ -16,6 +16,8 @@ interface BookingDetailActionsProps {
   bookingNumber: string;
   status: BookingStatus;
   isArchived: boolean;
+  checkOutId?: string | null;
+  checkInId?: string | null;
 }
 
 export function BookingDetailActions({
@@ -23,6 +25,8 @@ export function BookingDetailActions({
   bookingNumber,
   status,
   isArchived,
+  checkOutId,
+  checkInId,
 }: BookingDetailActionsProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -61,6 +65,22 @@ export function BookingDetailActions({
           <Button variant="default" disabled={loading} onClick={handleAdvance}>
             <ArrowRight className="mr-2 h-4 w-4" />
             {bookingStatusLabels[nextStatus]}
+          </Button>
+        )}
+        {checkOutId && (
+          <Button variant="outline" asChild>
+            <a href={`/api/checkout/${checkOutId}/pdf`} target="_blank" rel="noreferrer">
+              <FileDown className="mr-2 h-4 w-4" />
+              Übergabeprotokoll
+            </a>
+          </Button>
+        )}
+        {checkInId && (
+          <Button variant="outline" asChild>
+            <a href={`/api/checkin/${checkInId}/pdf`} target="_blank" rel="noreferrer">
+              <FileDown className="mr-2 h-4 w-4" />
+              Rücknahmeprotokoll
+            </a>
           </Button>
         )}
         <Button variant="outline" asChild>

@@ -8,9 +8,6 @@ import {
   BookingType,
   MaintenanceType,
   MaintenanceStatus,
-  DamageCategory,
-  DamageSeverity,
-  DamageStatus,
 } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { EUROPEAN_FAIRS } from "./european-fairs";
@@ -70,17 +67,6 @@ async function main() {
       lastName: "Müller",
       role: UserRole.ADMIN,
       phone: "+49 7702 1234-100",
-    },
-  });
-
-  await prisma.user.create({
-    data: {
-      email: "disposition@darda.de",
-      passwordHash: await bcrypt.hash("dispo123", 12),
-      firstName: "Sabine",
-      lastName: "Weber",
-      role: UserRole.DISPOSITION,
-      phone: "+49 7702 1234-101",
     },
   });
 
@@ -160,21 +146,27 @@ async function main() {
     },
   });
 
-  const catZange = await prisma.productCategory.create({
-    data: { name: "Zange", description: "Betonzangen / Multi Cutter", sortOrder: 1 },
+  const catSpaltgeraet = await prisma.productCategory.create({
+    data: { name: "Spaltgerät", description: "Hydraulik-Spaltgeräte", sortOrder: 1 },
   });
-  const catSpalter = await prisma.productCategory.create({
-    data: { name: "Spalter", description: "Hydraulikspalter", sortOrder: 2 },
+  const catCC = await prisma.productCategory.create({
+    data: { name: "CC", description: "Concrete Crusher", sortOrder: 2 },
+  });
+  const catMC = await prisma.productCategory.create({
+    data: { name: "MC", description: "Multi Cutter", sortOrder: 3 },
   });
   const catAggregat = await prisma.productCategory.create({
-    data: { name: "Aggregat", description: "Hydraulikaggregate", sortOrder: 3 },
+    data: { name: "Aggregat", description: "Hydraulikaggregate", sortOrder: 4 },
+  });
+  await prisma.productCategory.create({
+    data: { name: "Zubehör", description: "Zubehör und Ergänzungen", sortOrder: 5 },
   });
 
   const p1 = await prisma.product.create({
     data: {
       name: "Multi Cutter",
       model: "MC300",
-      categoryId: catZange.id,
+      categoryId: catMC.id,
       inventoryNumber: "DARDA-Betonzange-MC300",
       serialNumber: "MC300-1001",
       qrCode: "FLX-RENT-DARDA-Betonzange-MC300",
@@ -193,7 +185,7 @@ async function main() {
     data: {
       name: "Hydraulikspalter C12",
       model: "C12",
-      categoryId: catSpalter.id,
+      categoryId: catSpaltgeraet.id,
       inventoryNumber: "DARDA-C12-001",
       serialNumber: "C12-2001",
       qrCode: "FLX-RENT-DARDA-C12-001",
@@ -230,7 +222,7 @@ async function main() {
     data: {
       name: "Multi Cutter Compact",
       model: "MC200",
-      categoryId: catZange.id,
+      categoryId: catMC.id,
       inventoryNumber: "DARDA-MC200-001",
       serialNumber: "MC200-1002",
       qrCode: "FLX-RENT-DARDA-MC200-001",
@@ -405,48 +397,17 @@ async function main() {
     });
   }
 
-  const damageNumber = `S-${today.getFullYear()}-1001`;
-  await prisma.damageReport.create({
-    data: {
-      damageNumber,
-      productId: p4.id,
-      bookingId: activeBooking.id,
-      customerId: customer2.id,
-      reportedById: admin.id,
-      category: DamageCategory.HYDRAULIKSCHADEN,
-      affectedPart: "Hydraulikschlauch Druckleitung",
-      description:
-        "Bei Rückgabe nach Brückenabbruch Karlsruhe Ölleckage am rechten Hydraulikschlauch festgestellt. Schlauchmantel eingerissen, Druckabfall unter Last. Gerät vorläufig außer Betrieb.",
-      severity: DamageSeverity.SCHWER,
-      repairRequired: true,
-      stillUsable: false,
-      estimatedCostCents: 85000,
-      responsibility: "KUNDE",
-      isInsuranceCase: false,
-      status: DamageStatus.NEU,
-      notes: "Fotos vom Einsatzort angefordert. Kunde Abbruch Meister GmbH informiert.",
-      history: {
-        create: {
-          fromStatus: null,
-          toStatus: DamageStatus.NEU,
-          note: "Schadensmeldung erfasst",
-        },
-      },
-    },
-  });
-
   console.log("✅ Seed abgeschlossen mit Demo-Daten.");
   console.log("");
-  console.log("Logins:");
+  console.log("Logins (max. 6: 2 Admins + 4 Benutzer):");
   console.log("  Admin:        admin@darda.de / admin123");
-  console.log("  Disposition:  disposition@darda.de / dispo123");
   console.log("  Lager:        lager@darda.de / lager123");
   console.log("  Außendienst:  aussendienst@darda.de / aussen123");
   console.log("  Service:      service@darda.de / service123");
   console.log("  Lesend:       lesen@darda.de / lesen123");
   console.log("");
   console.log(
-    `Demo: 3 Standorte, 3 Kategorien, 4 Produkte, 2 Kunden, 3 Buchungen, 2 Wartungen, ${EUROPEAN_FAIRS.length} Messen, 1 Schaden`
+    `Demo: 3 Standorte, 5 Kategorien, 4 Produkte, 2 Kunden, 3 Buchungen, 2 Wartungen, ${EUROPEAN_FAIRS.length} Messen`
   );
 }
 

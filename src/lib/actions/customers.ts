@@ -203,7 +203,12 @@ export async function createCustomer(input: z.infer<typeof createCustomerSchema>
     });
 
     revalidatePath("/kunden");
-    return actionSuccess(customer);
+    return actionSuccess(
+      serializeForClient({
+        ...customer,
+        discountPercent: toPlainNumber(customer.discountPercent) ?? 0,
+      })
+    );
   } catch {
     return actionError("Kunde konnte nicht erstellt werden");
   }
@@ -266,7 +271,12 @@ export async function updateCustomer(id: string, input: z.infer<typeof updateCus
 
     revalidatePath("/kunden");
     revalidatePath(`/kunden/${id}`);
-    return actionSuccess(customer);
+    return actionSuccess(
+      serializeForClient({
+        ...customer,
+        discountPercent: toPlainNumber(customer.discountPercent) ?? 0,
+      })
+    );
   } catch {
     return actionError("Kunde konnte nicht aktualisiert werden");
   }
@@ -287,7 +297,6 @@ export async function deleteCustomer(id: string) {
           select: {
             bookings: true,
             events: true,
-            damageReports: true,
           },
         },
       },
@@ -297,8 +306,7 @@ export async function deleteCustomer(id: string) {
       return actionError("Kunde nicht gefunden");
     }
 
-    const linked =
-      existing._count.bookings + existing._count.events + existing._count.damageReports;
+    const linked = existing._count.bookings + existing._count.events;
 
     if (linked > 0) {
       const customer = await prisma.customer.update({
@@ -317,7 +325,12 @@ export async function deleteCustomer(id: string) {
 
       revalidatePath("/kunden");
       revalidatePath(`/kunden/${id}`);
-      return actionSuccess(customer);
+      return actionSuccess(
+        serializeForClient({
+          ...customer,
+          discountPercent: toPlainNumber(customer.discountPercent) ?? 0,
+        })
+      );
     }
 
     await prisma.customer.delete({ where: { id } });

@@ -67,7 +67,7 @@ export function BookingsList({ bookings }: { bookings: Booking[] }) {
     <div>
       <PageHeader
         title="Buchungen"
-        description="Vermietungen, Messen, Demos und interne Einsätze"
+        description="Vermietungen, Demos und interne Einsätze"
         actions={[{ label: "Neue Buchung", href: "/buchungen/neu", icon: <Plus className="h-4 w-4" /> }]}
       />
 

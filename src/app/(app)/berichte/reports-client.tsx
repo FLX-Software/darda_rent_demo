@@ -22,17 +22,14 @@ import {
   ChevronRight,
   TrendingUp,
   BookOpen,
-  AlertTriangle,
   Package,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { damageCategoryLabels } from "@/lib/labels";
 import { cn, formatCurrency } from "@/lib/utils";
 import type { MonthlyRevenue, ProductRevenue } from "@/lib/actions/reports";
-import { DamageCategory } from "@prisma/client";
 
 const CHART = {
   blue: "#0066CC",
@@ -76,11 +73,7 @@ interface ReportsClientProps {
   year: number;
   monthlyRevenue: MonthlyRevenue[];
   productRevenueByMonth: ProductRevenue[][];
-  damages: {
-    category: DamageCategory;
-    _count: number;
-    _sum: { actualCostCents: number | null };
-  }[];
+  topProducts: ProductRevenue[];
   utilization: { status: string; _count: number }[];
 }
 
@@ -144,18 +137,12 @@ export function ReportsClient({
   year,
   monthlyRevenue,
   productRevenueByMonth,
-  damages,
+  topProducts,
   utilization,
 }: ReportsClientProps) {
   const router = useRouter();
   const [viewMode, setViewMode] = useState<ViewMode>("year");
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
-
-  const damageData = damages.map((d) => ({
-    name: damageCategoryLabels[d.category],
-    count: d._count,
-    cost: (d._sum.actualCostCents ?? 0) / 100,
-  }));
 
   const utilizationData = utilization.map((u, i) => ({
     name: u.status,
@@ -167,9 +154,21 @@ export function ReportsClient({
   const selectedMonthMeta = monthlyRevenue[selectedMonth];
   const yearTotal = monthlyRevenue.reduce((sum, m) => sum + m.revenue, 0);
   const yearBookings = monthlyRevenue.reduce((sum, m) => sum + m.bookings, 0);
-  const damageCount = damages.reduce((sum, d) => sum + d._count, 0);
   const productCount = utilization.reduce((sum, u) => sum + u._count, 0);
   const utilizationTotal = utilizationData.reduce((sum, u) => sum + u.value, 0) || 1;
+  const outOfHouseCount =
+    utilizationData.find((u) => u.name === "Außer Haus")?.value ?? 0;
+  const availableCount =
+    utilizationData.find((u) => u.name === "Verfügbar")?.value ?? 0;
+  const outOfHousePercent = Math.round((outOfHouseCount / utilizationTotal) * 100);
+  const availablePercent = Math.round((availableCount / utilizationTotal) * 100);
+  const avgBookingValue =
+    (viewMode === "year" ? yearBookings : selectedMonthMeta?.bookings ?? 0) > 0
+      ? (viewMode === "year"
+          ? yearTotal
+          : selectedMonthMeta?.revenue ?? 0) /
+        (viewMode === "year" ? yearBookings : selectedMonthMeta?.bookings ?? 1)
+      : 0;
 
   const peakMonth = useMemo(() => {
     if (monthlyRevenue.length === 0) return null;
@@ -220,21 +219,18 @@ export function ReportsClient({
       iconBg: "bg-status-reserved/10 text-status-reserved",
     },
     {
+      label: "Ø Buchungswert",
+      value: formatCurrency(avgBookingValue * 100),
+      icon: TrendingUp,
+      accent: "border-l-status-transit",
+      iconBg: "bg-status-transit/10 text-status-transit",
+    },
+    {
       label: "Produkte im Bestand",
       value: String(productCount),
       icon: Package,
       accent: "border-l-status-available",
       iconBg: "bg-status-available/10 text-status-available",
-    },
-    {
-      label: "Schadensfälle",
-      value: String(damageCount),
-      icon: AlertTriangle,
-      accent: damageCount > 0 ? "border-l-status-damage" : "border-l-gray-300",
-      iconBg:
-        damageCount > 0
-          ? "bg-status-damage/10 text-status-damage"
-          : "bg-gray-100 text-gray-400",
     },
   ];
 
@@ -242,7 +238,7 @@ export function ReportsClient({
     <div className="space-y-6">
       <PageHeader
         title="Berichte"
-        description="Auswertungen zu Umsatz, Auslastung und Schäden"
+        description="Auswertungen zu Umsatz und Auslastung"
       />
 
       {/* Steuerung */}
@@ -559,7 +555,7 @@ export function ReportsClient({
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50/80 text-left text-xs uppercase tracking-wide text-gray-500">
                           <th className="px-4 py-3 font-medium">Produkt</th>
-                          <th className="px-4 py-3 font-medium">Inventar-Nr.</th>
+                          <th className="px-4 py-3 font-medium">Seriennr.</th>
                           <th className="px-4 py-3 text-right font-medium">Buchungen</th>
                           <th className="px-4 py-3 text-right font-medium">Umsatz</th>
                         </tr>
@@ -592,58 +588,109 @@ export function ReportsClient({
         <Card className="shadow-none">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Produktauslastung</CardTitle>
-            <p className="text-sm text-gray-500">Verteilung nach aktuellem Status</p>
+            <p className="text-sm text-gray-500">Aktueller Gerätebestand nach Status</p>
           </CardHeader>
           <CardContent>
             {utilizationData.length === 0 ? (
               <p className="py-10 text-center text-sm text-gray-500">Keine Produktdaten.</p>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
-                <ResponsiveContainer width="100%" height={240}>
-                  <PieChart>
-                    <Pie
-                      data={utilizationData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={58}
-                      outerRadius={92}
-                      paddingAngle={2}
-                      stroke="#fff"
-                      strokeWidth={2}
-                    >
-                      {utilizationData.map((entry) => (
-                        <Cell key={entry.name} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltip valueFormatter={(value) => `${value} Produkte`} />
-                      }
-                    />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div className="space-y-5">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Außer Haus
+                    </p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-flx-navy">
+                      {outOfHouseCount}
+                      <span className="ml-1 text-sm font-medium text-gray-400">
+                        ({outOfHousePercent}%)
+                      </span>
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-gray-100 bg-gray-50/80 px-3 py-3">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                      Verfügbar
+                    </p>
+                    <p className="mt-1 text-2xl font-bold tabular-nums text-flx-navy">
+                      {availableCount}
+                      <span className="ml-1 text-sm font-medium text-gray-400">
+                        ({availablePercent}%)
+                      </span>
+                    </p>
+                  </div>
+                </div>
 
-                <ul className="space-y-2 sm:min-w-[180px]">
-                  {utilizationData.map((item, i) => (
-                    <li key={item.name} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="flex items-center gap-2 text-gray-600">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
-                        />
-                        {item.name}
-                      </span>
-                      <span className="font-semibold tabular-nums text-flx-navy">
-                        {item.value}
-                        <span className="ml-1 text-xs font-normal text-gray-400">
-                          ({Math.round((item.value / utilizationTotal) * 100)}%)
-                        </span>
-                      </span>
-                    </li>
-                  ))}
+                <div className="relative mx-auto h-[200px] w-full max-w-[240px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={utilizationData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={58}
+                        outerRadius={88}
+                        paddingAngle={2}
+                        stroke="#fff"
+                        strokeWidth={2}
+                      >
+                        {utilizationData.map((entry) => (
+                          <Cell key={entry.name} fill={entry.fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        cursor={false}
+                        content={
+                          <ChartTooltip valueFormatter={(value) => `${value} Produkte`} />
+                        }
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-2xl font-bold tabular-nums text-flx-navy">
+                      {productCount}
+                    </p>
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
+                      Geräte
+                    </p>
+                  </div>
+                </div>
+
+                <ul className="space-y-3">
+                  {utilizationData.map((item, i) => {
+                    const percent = Math.round((item.value / utilizationTotal) * 100);
+                    return (
+                      <li key={item.name} className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="flex items-center gap-2 text-gray-600">
+                            <span
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{
+                                backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                              }}
+                            />
+                            {item.name}
+                          </span>
+                          <span className="font-semibold tabular-nums text-flx-navy">
+                            {item.value}
+                            <span className="ml-1 text-xs font-normal text-gray-400">
+                              ({percent}%)
+                            </span>
+                          </span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${percent}%`,
+                              backgroundColor: PIE_COLORS[i % PIE_COLORS.length],
+                            }}
+                          />
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             )}
@@ -652,52 +699,81 @@ export function ReportsClient({
 
         <Card className="shadow-none">
           <CardHeader className="pb-2">
-            <CardTitle className="text-base">Schäden nach Kategorie</CardTitle>
-            <p className="text-sm text-gray-500">Anzahl gemeldeter Schäden</p>
+            <CardTitle className="text-base">Top-Produkte {year}</CardTitle>
+            <p className="text-sm text-gray-500">Umsatzstärkste Geräte im ausgewählten Jahr</p>
           </CardHeader>
           <CardContent>
-            {damageData.length === 0 ? (
+            {topProducts.length === 0 ? (
               <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-200 bg-gray-50/70 px-4 py-12 text-center">
-                <AlertTriangle className="mb-2 h-8 w-8 text-gray-300" />
-                <p className="text-sm text-gray-500">Keine Schadensdaten vorhanden.</p>
+                <Package className="mb-2 h-8 w-8 text-gray-300" />
+                <p className="text-sm text-gray-500">Noch keine Produktumsätze in diesem Jahr.</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={280}>
-                <BarChart
-                  data={damageData}
-                  layout="vertical"
-                  margin={{ left: 4, right: 12, top: 4, bottom: 4 }}
+              <div className="space-y-4">
+                <ResponsiveContainer
+                  width="100%"
+                  height={Math.max(220, Math.min(topProducts.length, 5) * 42)}
                 >
-                  <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} horizontal={false} />
-                  <XAxis
-                    type="number"
-                    allowDecimals={false}
-                    tick={{ fontSize: 12, fill: "#64748B" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    width={130}
-                    tick={{ fontSize: 11, fill: "#475569" }}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    content={
-                      <ChartTooltip valueFormatter={(value) => `${value} Fälle`} />
-                    }
-                  />
-                  <Bar
-                    dataKey="count"
-                    name="Anzahl"
-                    fill={CHART.red}
-                    radius={[0, 6, 6, 0]}
-                    maxBarSize={22}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+                  <BarChart
+                    data={topProducts.slice(0, 5)}
+                    layout="vertical"
+                    margin={{ left: 4, right: 12, top: 4, bottom: 4 }}
+                  >
+                    <CartesianGrid strokeDasharray="4 4" stroke={CHART.grid} horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tick={{ fontSize: 12, fill: "#64748B" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      width={110}
+                      tick={{ fontSize: 11, fill: "#475569" }}
+                      axisLine={false}
+                      tickLine={false}
+                    />
+                    <Tooltip
+                      content={
+                        <ChartTooltip
+                          valueFormatter={(value) => formatCurrency(value * 100)}
+                        />
+                      }
+                    />
+                    <Bar
+                      dataKey="revenue"
+                      name="Umsatz (€)"
+                      fill={CHART.blue}
+                      radius={[0, 6, 6, 0]}
+                      maxBarSize={20}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+
+                <ul className="divide-y divide-gray-100 rounded-lg border border-gray-100">
+                  {topProducts.slice(0, 5).map((product, index) => (
+                    <li
+                      key={product.productId}
+                      className="flex items-center justify-between gap-3 px-3 py-2.5 text-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-flx-navy">
+                          <span className="mr-2 text-gray-400">{index + 1}.</span>
+                          {product.name}
+                        </p>
+                        <p className="truncate font-mono text-xs text-gray-400">
+                          {product.inventoryNumber} · {product.bookings} Buchung
+                          {product.bookings === 1 ? "" : "en"}
+                        </p>
+                      </div>
+                      <span className="shrink-0 font-semibold tabular-nums text-flx-navy">
+                        {formatCurrency(product.revenue * 100)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
           </CardContent>
         </Card>

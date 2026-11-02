@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { productConditionLabels } from "@/lib/labels";
 import { formatCurrency } from "@/lib/utils";
-import { MapPin, Package, Wrench } from "lucide-react";
+import { Package, Wrench } from "lucide-react";
 
 export default async function QrProductPage({
   params,
@@ -43,21 +43,12 @@ export default async function QrProductPage({
           <CardContent className="space-y-3 text-sm">
             <div className="flex items-center gap-2">
               <Package className="h-4 w-4 text-gray-400" />
-              <span>{product.model} · {product.category.name}</span>
+              <span>Artikelnr. {product.model} · {product.category.name}</span>
             </div>
-            {product.location && (
-              <div className="flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-gray-400" />
-                <span>{product.location.name}</span>
-              </div>
-            )}
             <div className="flex items-center gap-2">
               <Wrench className="h-4 w-4 text-gray-400" />
               <span>Tagessatz: {formatCurrency(product.dailyRateCents)}</span>
             </div>
-            {product.serialNumber && (
-              <p className="text-gray-500">SN: {product.serialNumber}</p>
-            )}
           </CardContent>
         </Card>
 

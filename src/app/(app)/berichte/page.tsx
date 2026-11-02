@@ -16,7 +16,7 @@ export default async function BerichtePage({ searchParams }: BerichtePageProps) 
       year={data.year}
       monthlyRevenue={data.monthlyRevenue}
       productRevenueByMonth={data.productRevenueByMonth}
-      damages={data.damages}
+      topProducts={data.topProducts}
       utilization={data.utilization}
     />
   );

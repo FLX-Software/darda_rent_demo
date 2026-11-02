@@ -5,11 +5,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+function isDecimalLike(value: object): boolean {
+  if (Object.prototype.toString.call(value) === "[object Decimal]") return true;
+  return (
+    typeof (value as { toFixed?: unknown }).toFixed === "function" &&
+    typeof (value as { toNumber?: unknown }).toNumber === "function"
+  );
+}
+
 /** Prisma Decimal / ähnliche Werte für Client Components serialisieren */
 export function toPlainNumber(value: unknown): number | null {
   if (value == null) return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  if (typeof value === "object" && value !== null && "toNumber" in value) {
+  if (typeof value === "object" && isDecimalLike(value)) {
     const n = (value as { toNumber: () => number }).toNumber();
     return Number.isFinite(n) ? n : null;
   }
@@ -22,18 +30,23 @@ export function toPlainNumber(value: unknown): number | null {
  * die an Client Components übergeben werden dürfen.
  */
 export function serializeForClient<T>(value: T): T {
-  return JSON.parse(
-    JSON.stringify(value, (_key, current) => {
-      if (
-        current != null &&
-        typeof current === "object" &&
-        typeof (current as { toNumber?: unknown }).toNumber === "function"
-      ) {
+  const walk = (current: unknown): unknown => {
+    if (current == null) return current;
+    if (current instanceof Date) return current.toISOString();
+    if (typeof current === "object") {
+      if (isDecimalLike(current)) {
         return (current as { toNumber: () => number }).toNumber();
       }
-      return current;
-    })
-  ) as T;
+      if (Array.isArray(current)) return current.map(walk);
+      const out: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(current as Record<string, unknown>)) {
+        out[key] = walk(val);
+      }
+      return out;
+    }
+    return current;
+  };
+  return walk(value) as T;
 }
 
 export function formatCurrency(cents: number): string {
@@ -65,12 +78,6 @@ export function generateBookingNumber(): string {
   const year = new Date().getFullYear();
   const random = Math.floor(Math.random() * 90000) + 10000;
   return `B-${year}-${random}`;
-}
-
-export function generateDamageNumber(): string {
-  const year = new Date().getFullYear();
-  const random = Math.floor(Math.random() * 9000) + 1000;
-  return `S-${year}-${random}`;
 }
 
 export function generateCustomerNumber(): string {

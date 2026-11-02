@@ -1,9 +1,5 @@
 import { notFound } from "next/navigation";
-import {
-  getProduct,
-  getProductCategories,
-  getLocations,
-} from "@/lib/actions/products";
+import { getProduct, getProductCategories } from "@/lib/actions/products";
 import { unwrapActionOrNull } from "@/lib/actions/types";
 import { CreateProductForm } from "../../neu/create-product-form";
 
@@ -13,10 +9,9 @@ export default async function ProduktBearbeitenPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [product, categories, locations] = await Promise.all([
+  const [product, categories] = await Promise.all([
     unwrapActionOrNull(await getProduct(id)),
     getProductCategories(),
-    getLocations(),
   ]);
 
   if (!product) notFound();
@@ -27,15 +22,12 @@ export default async function ProduktBearbeitenPage({
     <CreateProductForm
       mode="edit"
       categories={categories}
-      locations={locations}
       initial={{
         id: product.id,
         name: product.name,
         model: product.model,
         inventoryNumber: product.inventoryNumber,
-        serialNumber: product.serialNumber,
         categoryId: product.categoryId,
-        locationId: product.locationId,
         condition: product.condition,
         dailyRateCents: product.dailyRateCents,
         yearBuilt: product.yearBuilt,

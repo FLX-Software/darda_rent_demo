@@ -13,6 +13,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/planung", request.url));
   }
 
+  const removedDemoPaths = ["/messen-demos", "/wartungen", "/standorte"];
+  if (removedDemoPaths.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   const isPublic = publicPaths.some(
     (path) => pathname === path || pathname.startsWith(path + "/")
   );

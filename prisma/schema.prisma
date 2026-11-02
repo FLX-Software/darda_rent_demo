@@ -931,6 +931,25 @@ model AuditLog {
   @@index([createdAt])
 }
 
+// ==================== APP EINSTELLUNGEN ====================
+
+model AppSettings {
+  id                    String   @id @default("default")
+  companyName           String   @default("Darda GmbH")
+  companyAddress        String   @default("Darda-Straße 1, 78199 Bräunlingen")
+  contactEmail          String   @default("info@darda.de")
+  prepDaysDefault       Int      @default(1)
+  returnDaysDefault     Int      @default(1)
+  currency              String   @default("EUR")
+  notifyCheckoutTomorrow Boolean @default(true)
+  notifyReturnTomorrow   Boolean @default(true)
+  notifyOverdueReturn    Boolean @default(true)
+  notifyNewBooking       Boolean @default(true)
+  notifyBookingConflict  Boolean @default(true)
+  notifyMaintenanceDue   Boolean @default(true)
+  updatedAt             DateTime @updatedAt
+}
+
 // ==================== STATUS HISTORIE ====================
 
 model StatusHistory {

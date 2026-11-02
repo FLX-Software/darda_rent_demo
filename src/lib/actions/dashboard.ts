@@ -1,9 +1,18 @@
 "use server";
 
-import { addDays, startOfDay, startOfMonth, endOfMonth } from "date-fns";
+import { addDays, endOfDay, startOfDay, startOfMonth, endOfMonth } from "date-fns";
+import { BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/session";
+import { serializeForClient } from "@/lib/utils";
 import { actionError, actionSuccess } from "./types";
+
+/** Wie in der Planung: Entwurf/Storno/abgeschlossen ausblenden */
+const PLANNING_EXCLUDED: BookingStatus[] = [
+  "ENTWURF",
+  "STORNIERT",
+  "ABGESCHLOSSEN",
+];
 
 export async function getDashboardStats() {
   try {
@@ -11,9 +20,11 @@ export async function getDashboardStats() {
 
     const today = startOfDay(new Date());
     const tomorrow = addDays(today, 1);
-    const weekEnd = addDays(today, 7);
+    const weekEnd = endOfDay(addDays(today, 6)); // heute + 6 Tage = 7-Tage-Fenster
     const monthStart = startOfMonth(today);
     const monthEnd = endOfMonth(today);
+
+    const dayEnd = endOfDay(today);
 
     const [
       totalProducts,
@@ -28,7 +39,6 @@ export async function getDashboardStats() {
       todayCheckouts,
       todayReturns,
       activeBookings,
-      openDamages,
       pendingMaintenances,
       monthlyRevenue,
       upcomingCheckouts,
@@ -37,7 +47,22 @@ export async function getDashboardStats() {
       conflictCount,
     ] = await Promise.all([
       prisma.product.count({ where: { isArchived: false } }),
-      prisma.product.count({ where: { isArchived: false, status: "VERFUEGBAR" } }),
+      // Verfügbar = kein laufender Einsatz heute (wie in der Planung)
+      prisma.product.count({
+        where: {
+          isArchived: false,
+          bookingItems: {
+            none: {
+              booking: {
+                isArchived: false,
+                status: { notIn: PLANNING_EXCLUDED },
+                startDate: { lte: dayEnd },
+                plannedReturnDate: { gte: today },
+              },
+            },
+          },
+        },
+      }),
       prisma.product.count({ where: { isArchived: false, status: "BEIM_KUNDEN" } }),
       prisma.product.count({ where: { isArchived: false, status: "AUF_MESSE" } }),
       prisma.product.count({ where: { isArchived: false, status: "BEI_DEMO" } }),
@@ -48,22 +73,32 @@ export async function getDashboardStats() {
       prisma.booking.count({
         where: {
           isArchived: false,
-          status: { in: ["ABHOLBEREIT", "BESTAETIGT", "IN_VORBEREITUNG"] },
+          status: { notIn: PLANNING_EXCLUDED },
           startDate: { gte: today, lt: tomorrow },
         },
       }),
       prisma.booking.count({
         where: {
           isArchived: false,
-          status: { in: ["AKTIV", "RUECKGABE_FAELLIG"] },
+          status: { notIn: PLANNING_EXCLUDED },
           plannedReturnDate: { gte: today, lt: tomorrow },
         },
       }),
+      // Aktive Buchungen = läuft heute ODER startet in den nächsten 7 Tagen (wie Planung)
       prisma.booking.count({
-        where: { isArchived: false, status: { in: ["AKTIV", "UNTERWEGS", "AUSGEGEBEN"] } },
-      }),
-      prisma.damageReport.count({
-        where: { status: { notIn: ["GESCHLOSSEN", "REPARIERT"] } },
+        where: {
+          isArchived: false,
+          status: { notIn: PLANNING_EXCLUDED },
+          OR: [
+            {
+              startDate: { lte: dayEnd },
+              plannedReturnDate: { gte: today },
+            },
+            {
+              startDate: { gte: today, lte: weekEnd },
+            },
+          ],
+        },
       }),
       prisma.maintenance.count({
         where: { status: { in: ["FAELLIG", "UEBERFAELLIG"] } },
@@ -75,26 +110,51 @@ export async function getDashboardStats() {
       prisma.booking.findMany({
         where: {
           isArchived: false,
-          status: { in: ["ABHOLBEREIT", "BESTAETIGT", "IN_VORBEREITUNG"] },
+          status: { notIn: PLANNING_EXCLUDED },
           startDate: { gte: today, lte: weekEnd },
         },
-        include: { customer: true },
+        select: {
+          id: true,
+          bookingNumber: true,
+          type: true,
+          status: true,
+          startDate: true,
+          projectName: true,
+          contactName: true,
+          customer: { select: { companyName: true } },
+        },
         orderBy: { startDate: "asc" },
-        take: 10,
+        take: 15,
       }),
       prisma.booking.findMany({
         where: {
           isArchived: false,
-          status: { in: ["AKTIV", "RUECKGABE_FAELLIG", "UEBERFAELLIG"] },
+          status: { notIn: PLANNING_EXCLUDED },
           plannedReturnDate: { gte: today, lte: weekEnd },
         },
-        include: { customer: true },
+        select: {
+          id: true,
+          bookingNumber: true,
+          type: true,
+          status: true,
+          plannedReturnDate: true,
+          projectName: true,
+          contactName: true,
+          customer: { select: { companyName: true } },
+        },
         orderBy: { plannedReturnDate: "asc" },
-        take: 10,
+        take: 15,
       }),
       prisma.product.findMany({
         where: { isArchived: false },
-        include: { category: true, location: true },
+        select: {
+          id: true,
+          name: true,
+          inventoryNumber: true,
+          status: true,
+          dailyRateCents: true,
+          category: { select: { name: true } },
+        },
         orderBy: { updatedAt: "desc" },
         take: 8,
       }),
@@ -107,12 +167,6 @@ export async function getDashboardStats() {
       warnings.push({
         message: `${overdueReturns} überfällige Rückgabe(n)`,
         href: "/buchungen",
-      });
-    }
-    if (openDamages > 0) {
-      warnings.push({
-        message: `${openDamages} offene Schadensfälle`,
-        href: "/schaeden",
       });
     }
     if (pendingMaintenances > 0) {
@@ -128,29 +182,30 @@ export async function getDashboardStats() {
       });
     }
 
-    return actionSuccess({
-      stats: {
-        totalProducts,
-        availableProducts,
-        atCustomer,
-        atMesse,
-        atDemo,
-        inTransit,
-        inMaintenance,
-        damaged,
-        overdueReturns,
-        todayCheckouts,
-        todayReturns,
-        activeBookings,
-        openDamages,
-        pendingMaintenances,
-        monthlyRevenueCents: monthlyRevenue._sum.amountCents ?? 0,
-      },
-      warnings,
-      upcomingCheckouts,
-      upcomingReturns,
-      recentProducts,
-    });
+    return actionSuccess(
+      serializeForClient({
+        stats: {
+          totalProducts,
+          availableProducts,
+          atCustomer,
+          atMesse,
+          atDemo,
+          inTransit,
+          inMaintenance,
+          damaged,
+          overdueReturns,
+          todayCheckouts,
+          todayReturns,
+          activeBookings,
+          pendingMaintenances,
+          monthlyRevenueCents: monthlyRevenue._sum.amountCents ?? 0,
+        },
+        warnings,
+        upcomingCheckouts,
+        upcomingReturns,
+        recentProducts,
+      })
+    );
   } catch {
     return actionError("Dashboard-Daten konnten nicht geladen werden");
   }

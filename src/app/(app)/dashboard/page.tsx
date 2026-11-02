@@ -35,7 +35,6 @@ export default async function DashboardPage() {
       todayCheckouts: 0,
       todayReturns: 0,
       activeBookings: 0,
-      openDamages: 0,
       pendingMaintenances: 0,
       monthlyRevenueCents: 0,
     },
@@ -68,7 +67,7 @@ export default async function DashboardPage() {
       iconBg: "bg-status-reserved/10 text-status-reserved",
     },
     {
-      label: "Überfällige Rückgaben",
+      label: "Überfällige Rücknahmen",
       value: data.stats.overdueReturns,
       icon: AlertTriangle,
       accent:
@@ -84,8 +83,7 @@ export default async function DashboardPage() {
   const quickActions = [
     { href: "/buchungen/neu", label: "Buchung anlegen", icon: Plus },
     { href: "/produkte/neu", label: "Produkt anlegen", icon: Package },
-    { href: "/ausgaben-rueckgaben", label: "Ausgabe / Rückgabe", icon: ArrowLeftRight },
-    { href: "/schaeden/neu", label: "Schaden melden", icon: AlertTriangle },
+    { href: "/ausgaben-rueckgaben", label: "Übergabe / Rücknahme", icon: ArrowLeftRight },
     { href: "/planung", label: "Planung öffnen", icon: Calendar },
   ];
 
@@ -95,16 +93,18 @@ export default async function DashboardPage() {
       href: `/buchungen/${b.id}`,
       bookingNumber: b.bookingNumber,
       party: b.customer?.companyName ?? b.contactName,
+      detail: b.projectName,
       date: b.startDate,
-      kind: "Ausgabe" as const,
+      kind: "Übergabe" as const,
     })),
     ...data.upcomingReturns.map((b) => ({
       id: `in-${b.id}`,
       href: `/buchungen/${b.id}`,
       bookingNumber: b.bookingNumber,
       party: b.customer?.companyName ?? b.contactName,
+      detail: b.projectName,
       date: b.plannedReturnDate,
-      kind: "Rückgabe" as const,
+      kind: "Rücknahme" as const,
     })),
   ].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
@@ -207,7 +207,7 @@ export default async function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between pb-3">
             <div>
               <CardTitle className="text-base">7-Tage-Vorschau</CardTitle>
-              <p className="mt-1 text-xs text-gray-500">Ausgaben und Rückgaben der nächsten Woche</p>
+              <p className="mt-1 text-xs text-gray-500">Übergaben und Rücknahmen der nächsten Woche</p>
             </div>
             <Button variant="ghost" size="sm" asChild className="text-flx-blue">
               <Link href="/planung">
@@ -243,7 +243,7 @@ export default async function DashboardPage() {
                       <div
                         className={cn(
                           "h-10 w-1 shrink-0 rounded-full",
-                          item.kind === "Ausgabe" ? "bg-status-reserved" : "bg-status-transit"
+                          item.kind === "Übergabe" ? "bg-status-reserved" : "bg-status-transit"
                         )}
                       />
                       <div className="min-w-0 flex-1">
@@ -252,7 +252,7 @@ export default async function DashboardPage() {
                             {item.bookingNumber}
                           </span>
                           <Badge
-                            variant={item.kind === "Ausgabe" ? "secondary" : "warning"}
+                            variant={item.kind === "Übergabe" ? "secondary" : "warning"}
                             className="text-[10px]"
                           >
                             {item.kind}
@@ -260,6 +260,7 @@ export default async function DashboardPage() {
                         </div>
                         <p className="truncate text-sm text-gray-500">
                           {item.party ?? "Ohne Kundenzuordnung"}
+                          {item.detail ? ` · ${item.detail}` : ""}
                         </p>
                       </div>
                       <ArrowRight className="h-4 w-4 shrink-0 text-gray-300" />
@@ -291,11 +292,10 @@ export default async function DashboardPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-y border-gray-100 bg-gray-50/80 text-left text-xs uppercase tracking-wide text-gray-500">
-                  <th className="px-6 py-3 font-medium">Inventarnr.</th>
+                  <th className="px-6 py-3 font-medium">Seriennr.</th>
                   <th className="px-4 py-3 font-medium">Produkt</th>
                   <th className="px-4 py-3 font-medium">Kategorie</th>
                   <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Standort</th>
                   <th className="px-6 py-3 text-right font-medium">Tagessatz</th>
                 </tr>
               </thead>
@@ -318,7 +318,6 @@ export default async function DashboardPage() {
                     <td className="px-4 py-3">
                       <ProductStatusBadge status={p.status} />
                     </td>
-                    <td className="px-4 py-3 text-gray-500">{p.location?.name ?? "—"}</td>
                     <td className="px-6 py-3 text-right tabular-nums text-flx-navy">
                       {formatCurrency(p.dailyRateCents)}
                     </td>

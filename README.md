@@ -14,7 +14,6 @@ FLX Rent ist eine vollständige Webanwendung zur Verwaltung, Vermietung und Plan
 - **Kundenverwaltung** mit Historie
 - **Messen & Demos** mit Checklisten
 - **Ausgabe & Rückgabe** mit Zustandsdokumentation
-- **Schadensaufnahme** mit Bildergalerie und Markern
 - **Wartungen** mit Fälligkeitsüberwachung
 - **Standortverwaltung** mit Bewegungshistorie
 - **Berichte** mit Recharts-Diagrammen
@@ -76,10 +75,11 @@ Die Anwendung ist unter [http://localhost:3000](http://localhost:3000) erreichba
 
 ## Demo-Logins
 
+Lizenzlimit: max. **6** aktive Konten (**2** Administratoren + **4** Benutzer).
+
 | Rolle | E-Mail | Passwort |
 |-------|--------|----------|
 | Administrator | admin@darda.de | admin123 |
-| Disposition | disposition@darda.de | dispo123 |
 | Lager | lager@darda.de | lager123 |
 | Außendienst | aussendienst@darda.de | aussen123 |
 | Service | service@darda.de | service123 |
@@ -89,7 +89,7 @@ Die Anwendung ist unter [http://localhost:3000](http://localhost:3000) erreichba
 
 Die **Darda MC300 Zange** ist als Haupt-Beispieldatensatz angelegt:
 
-- Inventarnummer: `DARDA-MC300-001`
+- Seriennummer: `DARDA-MC300-001`
 - Seriennummer: `MC300-DEMO-001`
 - Mietpreis: 350,00 €/Tag
 - Standort: Hauptlager Blumberg

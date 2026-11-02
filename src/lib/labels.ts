@@ -2,9 +2,6 @@ import {
   ProductStatus,
   BookingType,
   BookingStatus,
-  DamageCategory,
-  DamageSeverity,
-  DamageStatus,
   MaintenanceStatus,
   MaintenanceType,
   LocationType,
@@ -129,39 +126,6 @@ export const bookingStatusLabels: Record<BookingStatus, string> = {
   IN_PRUEFUNG: "In Prüfung",
   ABGESCHLOSSEN: "Abgeschlossen",
   STORNIERT: "Storniert",
-};
-
-export const damageCategoryLabels: Record<DamageCategory, string> = {
-  KRATZER: "Kratzer",
-  RISS: "Riss",
-  BRUCH: "Bruch",
-  VERFORMUNG: "Verformung",
-  HYDRAULIKSCHADEN: "Hydraulikschaden",
-  LECKAGE: "Leckage",
-  ELEKTRISCHER_DEFEKT: "Elektrischer Defekt",
-  VERSCHLEISS: "Verschleiß",
-  FEHLENDES_TEIL: "Fehlendes Teil",
-  TRANSPORTSCHADEN: "Transportschaden",
-  UNSACHGEMAESSE_NUTZUNG: "Unsachgemäße Nutzung",
-  SONSTIGER_SCHADEN: "Sonstiger Schaden",
-};
-
-export const damageSeverityLabels: Record<DamageSeverity, string> = {
-  GERING: "Gering",
-  MITTEL: "Mittel",
-  SCHWER: "Schwer",
-  SICHERHEITSRELEVANT: "Sicherheitsrelevant",
-};
-
-export const damageStatusLabels: Record<DamageStatus, string> = {
-  NEU: "Neu",
-  IN_PRUEFUNG: "In Prüfung",
-  ANGEBOT_ANGEFORDERT: "Angebot angefordert",
-  FREIGEGEBEN: "Freigegeben",
-  IN_REPARATUR: "In Reparatur",
-  REPARIERT: "Repariert",
-  ABGERECHNET: "Abgerechnet",
-  GESCHLOSSEN: "Geschlossen",
 };
 
 export const maintenanceStatusLabels: Record<MaintenanceStatus, string> = {

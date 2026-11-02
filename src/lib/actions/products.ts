@@ -21,11 +21,11 @@ const productFiltersSchema = z.object({
 
 const createProductSchema = z.object({
   name: z.string().min(1, "Name ist erforderlich"),
-  model: z.string().min(1, "Modell ist erforderlich"),
+  model: z.string().min(1, "Artikelnummer ist erforderlich"),
   categoryId: z.string().min(1, "Kategorie ist erforderlich"),
   manufacturer: z.string().optional(),
-  inventoryNumber: z.string().min(1, "Inventarnummer ist erforderlich"),
-  serialNumber: z.string().min(1, "Seriennummer ist erforderlich"),
+  inventoryNumber: z.string().min(1, "Seriennummer ist erforderlich"),
+  serialNumber: z.string().optional(),
   barcode: z.string().optional(),
   description: z.string().optional(),
   weightKg: z.number().positive().optional(),
@@ -43,6 +43,11 @@ const createProductSchema = z.object({
   locationId: z.string().optional(),
   notes: z.string().optional(),
 });
+
+function resolveSerialNumber(inventoryNumber: string, serialNumber?: string | null) {
+  const trimmed = serialNumber?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : `SN-${inventoryNumber}`;
+}
 
 const updateProductSchema = createProductSchema.partial();
 
@@ -160,23 +165,23 @@ export async function createProduct(input: z.infer<typeof createProductSchema>) 
     }
 
     const data = parsed.data;
+    const serialNumber = resolveSerialNumber(data.inventoryNumber, data.serialNumber);
 
     const existing = await prisma.product.findFirst({
       where: {
-        OR: [
-          { inventoryNumber: data.inventoryNumber },
-          { serialNumber: data.serialNumber },
-        ],
+        OR: [{ inventoryNumber: data.inventoryNumber }, { serialNumber }],
       },
     });
 
     if (existing) {
-      return actionError("Inventarnummer oder Seriennummer bereits vergeben");
+      return actionError("Seriennummer bereits vergeben");
     }
 
     const product = await prisma.product.create({
       data: {
         ...data,
+        serialNumber,
+        locationId: data.locationId ?? null,
         qrCode: generateQrCodeValue(data.inventoryNumber),
         manufacturer: data.manufacturer ?? "Darda GmbH",
       },
@@ -192,7 +197,7 @@ export async function createProduct(input: z.infer<typeof createProductSchema>) 
     });
 
     revalidatePath("/produkte");
-    return actionSuccess(product);
+    return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
   } catch {
     return actionError("Produkt konnte nicht erstellt werden");
   }
@@ -210,15 +215,15 @@ export async function createProductFromForm(formData: FormData) {
     const weightKg = weightRaw ? Number.parseFloat(weightRaw.replace(",", ".")) : undefined;
     const yearBuilt = yearRaw ? Number.parseInt(yearRaw, 10) : undefined;
 
+    const inventoryNumber = formData.get("inventoryNumber")?.toString() ?? "";
     const input = {
       name: formData.get("name")?.toString() ?? "",
       model: formData.get("model")?.toString() ?? "",
       categoryId: formData.get("categoryId")?.toString() ?? "",
-      inventoryNumber: formData.get("inventoryNumber")?.toString() ?? "",
-      serialNumber: formData.get("serialNumber")?.toString() ?? "",
+      inventoryNumber,
+      serialNumber: resolveSerialNumber(inventoryNumber),
       dailyRateCents: Math.round(dailyRate * 100),
       description: formData.get("description")?.toString() || undefined,
-      locationId: formData.get("locationId")?.toString() || undefined,
       condition: (formData.get("condition")?.toString() as ProductCondition) || undefined,
       weightKg: Number.isFinite(weightKg) && (weightKg as number) > 0 ? weightKg : undefined,
       yearBuilt: Number.isFinite(yearBuilt) ? yearBuilt : undefined,
@@ -231,23 +236,26 @@ export async function createProductFromForm(formData: FormData) {
     }
 
     const data = parsed.data;
+    const serialNumber = resolveSerialNumber(data.inventoryNumber, data.serialNumber);
 
     const existing = await prisma.product.findFirst({
       where: {
         OR: [
           { inventoryNumber: data.inventoryNumber },
-          { serialNumber: data.serialNumber },
+          { serialNumber },
         ],
       },
     });
 
     if (existing) {
-      return actionError("Inventarnummer oder Seriennummer bereits vergeben");
+      return actionError("Seriennummer bereits vergeben");
     }
 
     const product = await prisma.product.create({
       data: {
         ...data,
+        serialNumber,
+        locationId: null,
         qrCode: generateQrCodeValue(data.inventoryNumber),
         manufacturer: data.manufacturer ?? "Darda GmbH",
       },
@@ -286,7 +294,7 @@ export async function createProductFromForm(formData: FormData) {
 
     revalidatePath("/produkte");
     revalidatePath(`/produkte/${product.id}`);
-    return actionSuccess(product);
+    return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
   } catch {
     return actionError("Produkt konnte nicht erstellt werden");
   }
@@ -369,7 +377,7 @@ export async function updateProduct(id: string, input: z.infer<typeof updateProd
       });
 
       if (duplicate) {
-        return actionError("Inventarnummer oder Seriennummer bereits vergeben");
+        return actionError("Seriennummer bereits vergeben");
       }
     }
 
@@ -397,7 +405,7 @@ export async function updateProduct(id: string, input: z.infer<typeof updateProd
 
     revalidatePath("/produkte");
     revalidatePath(`/produkte/${id}`);
-    return actionSuccess(product);
+    return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
   } catch {
     return actionError("Produkt konnte nicht aktualisiert werden");
   }
@@ -421,17 +429,15 @@ export async function updateProductFromForm(id: string, formData: FormData) {
     const yearBuilt = parseOptionalYearBuilt(formData.get("yearBuilt")?.toString());
     const dimensionsRaw = formData.get("dimensions")?.toString().trim() ?? "";
     const descriptionRaw = formData.get("description")?.toString().trim() ?? "";
-    const locationIdRaw = formData.get("locationId")?.toString().trim() ?? "";
-
+    const inventoryNumber = formData.get("inventoryNumber")?.toString() ?? "";
     const input = {
       name: formData.get("name")?.toString() ?? "",
       model: formData.get("model")?.toString() ?? "",
       categoryId: formData.get("categoryId")?.toString() ?? "",
-      inventoryNumber: formData.get("inventoryNumber")?.toString() ?? "",
-      serialNumber: formData.get("serialNumber")?.toString() ?? "",
+      inventoryNumber,
+      serialNumber: existing.serialNumber,
       dailyRateCents: Math.round(dailyRate * 100),
       description: descriptionRaw || null,
-      locationId: locationIdRaw || null,
       condition: (formData.get("condition")?.toString() as ProductCondition) || undefined,
       weightKg: weightKg === undefined ? undefined : weightKg,
       yearBuilt: yearBuilt === undefined ? undefined : yearBuilt,
@@ -444,7 +450,6 @@ export async function updateProductFromForm(id: string, formData: FormData) {
         yearBuilt: z.number().int().nullable().optional(),
         dimensions: z.string().nullable().optional(),
         description: z.string().nullable().optional(),
-        locationId: z.string().nullable().optional(),
       })
       .safeParse(input);
 
@@ -457,15 +462,12 @@ export async function updateProductFromForm(id: string, formData: FormData) {
     const duplicate = await prisma.product.findFirst({
       where: {
         id: { not: id },
-        OR: [
-          { inventoryNumber: data.inventoryNumber },
-          { serialNumber: data.serialNumber },
-        ],
+        inventoryNumber: data.inventoryNumber,
       },
     });
 
     if (duplicate) {
-      return actionError("Inventarnummer oder Seriennummer bereits vergeben");
+      return actionError("Seriennummer bereits vergeben");
     }
 
     const product = await prisma.product.update({
@@ -475,10 +477,8 @@ export async function updateProductFromForm(id: string, formData: FormData) {
         model: data.model,
         categoryId: data.categoryId,
         inventoryNumber: data.inventoryNumber,
-        serialNumber: data.serialNumber,
         dailyRateCents: data.dailyRateCents,
         description: data.description,
-        locationId: data.locationId,
         condition: data.condition,
         weightKg: data.weightKg,
         yearBuilt: data.yearBuilt,
@@ -508,7 +508,7 @@ export async function updateProductFromForm(id: string, formData: FormData) {
 
     revalidatePath("/produkte");
     revalidatePath(`/produkte/${id}`);
-    return actionSuccess(product);
+    return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
   } catch {
     return actionError("Produkt konnte nicht aktualisiert werden");
   }
@@ -542,7 +542,7 @@ export async function archiveProduct(id: string) {
     });
 
     revalidatePath("/produkte");
-    return actionSuccess(product);
+    return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
   } catch {
     return actionError("Produkt konnte nicht archiviert werden");
   }
@@ -563,7 +563,6 @@ export async function deleteProduct(id: string) {
           select: {
             bookingItems: true,
             eventProducts: true,
-            damageReports: true,
           },
         },
       },
@@ -573,10 +572,7 @@ export async function deleteProduct(id: string) {
       return actionError("Produkt nicht gefunden");
     }
 
-    const linked =
-      existing._count.bookingItems +
-      existing._count.eventProducts +
-      existing._count.damageReports;
+    const linked = existing._count.bookingItems + existing._count.eventProducts;
 
     if (linked > 0) {
       const product = await prisma.product.update({
@@ -595,7 +591,7 @@ export async function deleteProduct(id: string) {
 
       revalidatePath("/produkte");
       revalidatePath(`/produkte/${id}`);
-      return actionSuccess(product);
+      return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
     }
 
     await prisma.$transaction(async (tx) => {

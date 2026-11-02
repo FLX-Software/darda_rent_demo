@@ -15,7 +15,7 @@ import {
   productStatusLabels,
 } from "@/lib/labels";
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils";
-import { MapPin, Package, Pencil, QrCode, Wrench } from "lucide-react";
+import { Package, Pencil, QrCode, Wrench } from "lucide-react";
 import { ArchiveProductButton } from "@/components/products/archive-product-button";
 
 export default async function ProductDetailPage({
@@ -33,7 +33,7 @@ export default async function ProductDetailPage({
     <div>
       <PageHeader
         title={product.name}
-        description={`${product.model} · ${product.inventoryNumber}`}
+        description={`${product.inventoryNumber} · Artikelnr. ${product.model}`}
         backHref="/produkte"
         actions={[
           {
@@ -119,12 +119,8 @@ export default async function ProductDetailPage({
                       <dd>{productConditionLabels[product.condition]}</dd>
                     </div>
                     <div>
-                      <dt className="text-gray-500">Seriennummer</dt>
-                      <dd className="font-mono">{product.serialNumber}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-gray-500">Barcode</dt>
-                      <dd className="font-mono">{product.barcode ?? "—"}</dd>
+                      <dt className="text-gray-500">Artikelnummer</dt>
+                      <dd className="font-mono">{product.model}</dd>
                     </div>
                     <div>
                       <dt className="text-gray-500">Baujahr</dt>
@@ -141,13 +137,6 @@ export default async function ProductDetailPage({
                     <div>
                       <dt className="text-gray-500">Abmessungen</dt>
                       <dd>{product.dimensions ?? "—"}</dd>
-                    </div>
-                    <div>
-                      <dt className="text-gray-500">Standort</dt>
-                      <dd className="flex items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 text-gray-400" />
-                        {product.location?.name ?? "—"}
-                      </dd>
                     </div>
                   </dl>
                   {product.description && (

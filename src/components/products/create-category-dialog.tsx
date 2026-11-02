@@ -53,7 +53,7 @@ export function CreateCategoryDialog({
         <form onSubmit={handleSubmit} className="space-y-2">
           <div className="space-y-1">
             <Label htmlFor="cat-name">Neue Kategorie</Label>
-            <Input id="cat-name" name="name" required placeholder="z.B. Zange" />
+            <Input id="cat-name" name="name" required placeholder="z.B. MC" />
           </div>
           <div className="space-y-1">
             <Label htmlFor="cat-desc">Beschreibung</Label>

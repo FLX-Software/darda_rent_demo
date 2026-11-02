@@ -32,6 +32,8 @@ export default async function BookingDetailPage({
           bookingNumber={booking.bookingNumber}
           status={booking.status}
           isArchived={booking.isArchived}
+          checkOutId={booking.checkOuts[0]?.id}
+          checkInId={booking.checkIns[0]?.id}
         />
       </PageHeader>
 
@@ -98,19 +100,41 @@ export default async function BookingDetailPage({
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Ausgabe & Rückgabe</CardTitle>
+                <CardTitle className="text-base">Übergabe & Rücknahme</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 {booking.actualCheckoutAt ? (
-                  <p>Ausgegeben: {formatDateTime(booking.actualCheckoutAt)}</p>
+                  <p>Übergeben: {formatDateTime(booking.actualCheckoutAt)}</p>
                 ) : (
-                  <p className="text-gray-500">Noch nicht ausgegeben</p>
+                  <p className="text-gray-500">Noch nicht übergeben</p>
                 )}
                 {booking.actualReturnAt ? (
-                  <p>Zurückgegeben: {formatDateTime(booking.actualReturnAt)}</p>
+                  <p>Zurückgenommen: {formatDateTime(booking.actualReturnAt)}</p>
                 ) : (
-                  <p className="text-gray-500">Noch nicht zurückgegeben</p>
+                  <p className="text-gray-500">Noch nicht zurückgenommen</p>
                 )}
+                <div className="flex flex-col gap-1">
+                  {booking.checkOuts[0] && (
+                    <a
+                      href={`/api/checkout/${booking.checkOuts[0].id}/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex text-flx-blue hover:underline"
+                    >
+                      Übergabeprotokoll PDF herunterladen
+                    </a>
+                  )}
+                  {booking.checkIns[0] && (
+                    <a
+                      href={`/api/checkin/${booking.checkIns[0].id}/pdf`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex text-flx-blue hover:underline"
+                    >
+                      Rücknahmeprotokoll PDF herunterladen
+                    </a>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
