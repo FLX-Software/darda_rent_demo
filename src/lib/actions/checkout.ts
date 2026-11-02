@@ -2,16 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { BookingStatus, ProductCondition } from "@prisma/client";
-import { startOfDay, endOfDay } from "date-fns";
+import { BookingStatus, BookingType, ProductCondition } from "@prisma/client";
+import { addDays, startOfDay, endOfDay } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
 import { getProductStatusForBookingType } from "@/lib/availability";
 import { requireAuth } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { saveFile } from "@/lib/storage";
-import { serializeForClient } from "@/lib/utils";
+import { generateBookingNumber, serializeForClient } from "@/lib/utils";
 import { actionError, actionSuccess, getValidationError } from "./types";
+
+const DEMO_HANDOVER_MARKER = "DEMO-ÜBERGABE";
 
 const CHECKOUT_STATUSES: BookingStatus[] = ["ABHOLBEREIT", "IN_VORBEREITUNG", "BESTAETIGT"];
 const CHECKIN_STATUSES: BookingStatus[] = [
@@ -433,6 +435,118 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
     );
   } catch {
     return actionError("Rückgabe konnte nicht durchgeführt werden");
+  }
+}
+
+/** Legt/aktualisiert eine abholbereite Demo-Buchung für Übergabe-Tests an. */
+export async function prepareDemoHandoverBooking() {
+  try {
+    const user = await requireAuth();
+    if (!hasPermission(user.role, "checkout.perform")) {
+      return actionError("Keine Berechtigung für Übergaben");
+    }
+
+    const today = startOfDay(new Date());
+    const returnDate = addDays(today, 7);
+
+    const customer = await prisma.customer.findFirst({
+      where: { isActive: true },
+      orderBy: { companyName: "asc" },
+    });
+    if (!customer) {
+      return actionError("Kein Kunde vorhanden. Bitte zuerst einen Kunden anlegen.");
+    }
+
+    const products = await prisma.product.findMany({
+      where: { isArchived: false },
+      orderBy: { name: "asc" },
+      take: 2,
+    });
+    if (products.length === 0) {
+      return actionError("Kein Produkt vorhanden. Bitte zuerst Produkte anlegen.");
+    }
+
+    const existing = await prisma.booking.findFirst({
+      where: {
+        isArchived: false,
+        projectName: DEMO_HANDOVER_MARKER,
+        status: { in: CHECKOUT_STATUSES },
+      },
+      include: { items: true },
+    });
+
+    if (existing) {
+      const updated = await prisma.booking.update({
+        where: { id: existing.id },
+        data: {
+          status: "ABHOLBEREIT",
+          startDate: today,
+          plannedReturnDate: returnDate,
+          contactName: customer.companyName,
+          notes: "Testdaten für Übergabe (Kamera, Checkliste, Protokoll).",
+        },
+      });
+
+      revalidatePath("/ausgaben-rueckgaben");
+      revalidatePath("/buchungen");
+      revalidatePath("/planung");
+      revalidatePath("/dashboard");
+      return actionSuccess({
+        bookingId: updated.id,
+        bookingNumber: updated.bookingNumber,
+        created: false,
+      });
+    }
+
+    const booking = await prisma.booking.create({
+      data: {
+        bookingNumber: generateBookingNumber(),
+        type: BookingType.KUNDENVERMIETUNG,
+        status: BookingStatus.ABHOLBEREIT,
+        customerId: customer.id,
+        contactName: "Demo Empfänger",
+        projectName: DEMO_HANDOVER_MARKER,
+        responsibleUserId: user.id,
+        startDate: today,
+        plannedReturnDate: returnDate,
+        rentalCostCents: products.reduce((sum, p) => sum + p.dailyRateCents * 7, 0),
+        totalCostCents: products.reduce((sum, p) => sum + p.dailyRateCents * 7, 0),
+        notes: "Testdaten für Übergabe (Kamera, Checkliste, Protokoll).",
+        items: {
+          create: products.map((p) => ({
+            productId: p.id,
+            quantity: 1,
+            dailyRateCents: p.dailyRateCents,
+          })),
+        },
+      },
+    });
+
+    await createAuditLog({
+      userId: user.id,
+      action: "CREATE",
+      entityType: "Booking",
+      entityId: booking.id,
+      newValue: {
+        bookingNumber: booking.bookingNumber,
+        projectName: DEMO_HANDOVER_MARKER,
+        status: booking.status,
+      },
+    });
+
+    revalidatePath("/ausgaben-rueckgaben");
+    revalidatePath("/buchungen");
+    revalidatePath("/planung");
+    revalidatePath("/dashboard");
+
+    return actionSuccess({
+      bookingId: booking.id,
+      bookingNumber: booking.bookingNumber,
+      created: true,
+    });
+  } catch (error) {
+    console.error("prepareDemoHandoverBooking failed:", error);
+    return actionError("Demo-Übergabe konnte nicht vorbereitet werden");
   }
 }
 

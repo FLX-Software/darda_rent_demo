@@ -23,6 +23,7 @@ import {
 import {
   performCheckIn,
   performCheckOut,
+  prepareDemoHandoverBooking,
   uploadCheckoutImage,
 } from "@/lib/actions/checkout";
 import { bookingStatusLabels } from "@/lib/labels";
@@ -78,6 +79,7 @@ export function CheckoutWizard({ bookings }: { bookings: CheckoutBooking[] }) {
   const [lastCheckInId, setLastCheckInId] = useState<string | null>(null);
   const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [checkinDialogStep, setCheckinDialogStep] = useState<"ask" | "protocol">("ask");
+  const [preparingDemo, setPreparingDemo] = useState(false);
 
   const checkoutReady = useMemo(
     () =>
@@ -342,12 +344,50 @@ export function CheckoutWizard({ bookings }: { bookings: CheckoutBooking[] }) {
 
   const list = tab === "checkout" ? checkoutReady : returnReady;
 
+  async function handlePrepareDemo() {
+    setPreparingDemo(true);
+    setError("");
+    setSuccess("");
+    try {
+      const result = await prepareDemoHandoverBooking();
+      if (!result.success || !result.data) {
+        setError(result.error ?? "Demo-Übergabe konnte nicht vorbereitet werden.");
+        return;
+      }
+      setTab("checkout");
+      setSuccess(
+        `Testbuchung ${result.data.bookingNumber} ist abholbereit – Übergabe inkl. Kamera und Protokoll testen.`
+      );
+      router.refresh();
+    } catch {
+      setError("Demo-Übergabe konnte nicht vorbereitet werden.");
+    } finally {
+      setPreparingDemo(false);
+    }
+  }
+
   return (
     <div>
       <PageHeader
         title="Übergabe & Rücknahme"
         description="Geräte an den Kunden übergeben und bei Rücknahme prüfen"
       />
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-flx-blue/25 bg-flx-blue-light/40 px-3 py-2 text-sm text-flx-navy">
+        <p>
+          <span className="font-medium">Demo-Test:</span> Mit einem Klick eine abholbereite
+          Buchung anlegen und Übergabe (Checkliste, Kamera, PDF) durchspielen.
+        </p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={preparingDemo || loading}
+          onClick={() => void handlePrepareDemo()}
+        >
+          {preparingDemo ? "Wird vorbereitet…" : "Test-Übergabe vorbereiten"}
+        </Button>
+      </div>
 
       {success && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
@@ -406,7 +446,18 @@ export function CheckoutWizard({ bookings }: { bookings: CheckoutBooking[] }) {
               </CardHeader>
               <CardContent className="space-y-2">
                 {list.length === 0 ? (
-                  <p className="text-sm text-gray-500">Keine Übergaben anstehend.</p>
+                  <div className="space-y-2 text-sm text-gray-500">
+                    <p>Keine Übergaben anstehend.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={preparingDemo}
+                      onClick={() => void handlePrepareDemo()}
+                    >
+                      {preparingDemo ? "Wird vorbereitet…" : "Test-Übergabe vorbereiten"}
+                    </Button>
+                  </div>
                 ) : (
                   list.map((b) => (
                     <button
