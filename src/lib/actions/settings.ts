@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { getCurrentUser } from "@/lib/session";
+import { authorize, getCurrentUser } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import { serializeForClient } from "@/lib/utils";
 import {
@@ -60,8 +60,8 @@ function toSettingsData(row: {
 }
 
 export async function getSettings(): Promise<AppSettingsData> {
-  const user = await getCurrentUser();
-  if (!user) return DEFAULT_APP_SETTINGS;
+  const auth = await authorize("settings.view");
+  if (!auth.ok) return DEFAULT_APP_SETTINGS;
 
   try {
     const row = await prisma.appSettings.upsert({

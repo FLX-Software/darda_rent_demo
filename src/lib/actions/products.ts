@@ -5,7 +5,8 @@ import { z } from "zod";
 import { ProductCondition, ProductStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
+import { StorageError } from "@/lib/storage";
 import { generateQrCodeValue, serializeForClient, toPlainNumber } from "@/lib/utils";
 import { saveFile } from "@/lib/storage";
 import { resolveProductDisplayBookingType, visibleProductBookingTypes } from "@/lib/labels";
@@ -53,7 +54,8 @@ const updateProductSchema = createProductSchema.partial();
 
 export async function getProducts(filters?: z.infer<typeof productFiltersSchema>) {
   try {
-    await requireAuth();
+    const auth = await authorize("products.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const parsed = filters ? productFiltersSchema.safeParse(filters) : { success: true as const, data: {} };
     if (!parsed.success) {
@@ -121,7 +123,8 @@ export async function getProducts(filters?: z.infer<typeof productFiltersSchema>
 
 export async function getProduct(id: string) {
   try {
-    await requireAuth();
+    const auth = await authorize("products.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!id) {
       return actionError("Produkt-ID ist erforderlich");
@@ -157,7 +160,9 @@ export async function getProduct(id: string) {
 
 export async function createProduct(input: z.infer<typeof createProductSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createProductSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -205,7 +210,9 @@ export async function createProduct(input: z.infer<typeof createProductSchema>) 
 
 export async function createProductFromForm(formData: FormData) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     const dailyRate = parseFloat(formData.get("dailyRate")?.toString() ?? "0");
     const weightRaw = formData.get("weightKg")?.toString().trim();
@@ -295,7 +302,8 @@ export async function createProductFromForm(formData: FormData) {
     revalidatePath("/produkte");
     revalidatePath(`/produkte/${product.id}`);
     return actionSuccess(serializeForClient({ ...product, weightKg: toPlainNumber(product.weightKg) }));
-  } catch {
+  } catch (error) {
+    if (error instanceof StorageError) return actionError(error.message);
     return actionError("Produkt konnte nicht erstellt werden");
   }
 }
@@ -345,7 +353,9 @@ async function savePrimaryProductImage(productId: string, imageFile: File, capti
 
 export async function updateProduct(id: string, input: z.infer<typeof updateProductSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateProductSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -413,7 +423,9 @@ export async function updateProduct(id: string, input: z.infer<typeof updateProd
 
 export async function updateProductFromForm(id: string, formData: FormData) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Produkt-ID ist erforderlich");
@@ -516,7 +528,9 @@ export async function updateProductFromForm(id: string, formData: FormData) {
 
 export async function archiveProduct(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.delete");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Produkt-ID ist erforderlich");
@@ -550,7 +564,9 @@ export async function archiveProduct(id: string) {
 
 export async function deleteProduct(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.delete");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Produkt-ID ist erforderlich");
@@ -626,7 +642,9 @@ export async function deleteProduct(id: string) {
 
 export async function uploadProductImage(productId: string, formData: FormData) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!productId) {
       return actionError("Produkt-ID ist erforderlich");
@@ -690,7 +708,9 @@ const createCategorySchema = z.object({
 
 export async function createProductCategory(input: z.infer<typeof createCategorySchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("products.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createCategorySchema.safeParse(input);
     if (!parsed.success) {
       return actionError(getValidationError(parsed.error));
@@ -729,17 +749,20 @@ export async function createProductCategory(input: z.infer<typeof createCategory
 
 /** Hilfsfunktionen für bestehende Seiten */
 export async function getProductCategories() {
-  await requireAuth();
+  const auth = await authorize("products.view");
+  if (!auth.ok) return [];
   return prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" } });
 }
 
 export async function getLocations() {
-  await requireAuth();
+  const auth = await authorize("locations.view");
+  if (!auth.ok) return [];
   return prisma.location.findMany({ where: { isActive: true }, orderBy: { name: "asc" } });
 }
 
 export async function getProductByQrCode(code: string) {
-  await requireAuth();
+  const auth = await authorize("products.view");
+  if (!auth.ok) return null;
   return prisma.product.findFirst({
     where: {
       OR: [{ qrCode: code }, { inventoryNumber: code.replace("FLX-RENT-", "") }],

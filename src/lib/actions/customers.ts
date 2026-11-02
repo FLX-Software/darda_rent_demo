@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
 import { generateCustomerNumber, serializeForClient, toPlainNumber } from "@/lib/utils";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
@@ -52,7 +52,8 @@ const updateCustomerSchema = createCustomerSchema.partial();
 
 export async function getCustomers(filters?: z.infer<typeof customerFiltersSchema> | string) {
   try {
-    await requireAuth();
+    const auth = await authorize("customers.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const normalizedFilters =
       typeof filters === "string" ? { search: filters } : filters;
@@ -103,7 +104,8 @@ export async function getCustomers(filters?: z.infer<typeof customerFiltersSchem
 
 export async function getCustomer(id: string) {
   try {
-    await requireAuth();
+    const auth = await authorize("customers.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!id) {
       return actionError("Kunden-ID ist erforderlich");
@@ -158,7 +160,9 @@ export async function getCustomer(id: string) {
 
 export async function createCustomer(input: z.infer<typeof createCustomerSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("customers.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createCustomerSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -216,7 +220,9 @@ export async function createCustomer(input: z.infer<typeof createCustomerSchema>
 
 export async function updateCustomer(id: string, input: z.infer<typeof updateCustomerSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("customers.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateCustomerSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -284,7 +290,9 @@ export async function updateCustomer(id: string, input: z.infer<typeof updateCus
 
 export async function deleteCustomer(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("customers.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Kunden-ID ist erforderlich");

@@ -5,8 +5,14 @@ import { z } from "zod";
 import { BookingStatus, BookingType, Prisma, ShipmentMethod } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { checkMultipleProductsAvailability } from "@/lib/availability";
-import { requireAuth } from "@/lib/session";
+import {
+  checkMultipleProductsAvailability,
+  formatConflictMessage,
+  isBlockingStatus,
+  lockProducts,
+} from "@/lib/availability";
+import { calcRentalCostCents } from "@/lib/pricing";
+import { authorize } from "@/lib/session";
 import { generateBookingNumber, serializeForClient } from "@/lib/utils";
 import { getNextBookingStatus } from "@/lib/booking-status";
 import { actionError, actionSuccess, getValidationError } from "./types";
@@ -144,7 +150,8 @@ async function releaseReservedProducts(
 
 export async function getBookings(filters?: z.infer<typeof bookingFiltersSchema>) {
   try {
-    await requireAuth();
+    const auth = await authorize("bookings.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const parsed = filters
       ? bookingFiltersSchema.safeParse(filters)
@@ -200,7 +207,8 @@ export async function getBookings(filters?: z.infer<typeof bookingFiltersSchema>
 
 export async function getBooking(id: string) {
   try {
-    await requireAuth();
+    const auth = await authorize("bookings.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!id) {
       return actionError("Buchungs-ID ist erforderlich");
@@ -232,7 +240,9 @@ export async function getBooking(id: string) {
 
 export async function createBooking(input: z.input<typeof createBookingSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("bookings.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createBookingSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -241,35 +251,39 @@ export async function createBooking(input: z.input<typeof createBookingSchema>) 
 
     const data = parsed.data;
     const productIds = data.items.map((item) => item.productId);
-
-    const availability = await checkMultipleProductsAvailability(
-      productIds,
-      data.startDate,
-      data.plannedReturnDate,
-      undefined,
-      data.prepDaysBefore,
-      data.prepDaysAfter
-    );
-
-    if (!availability.available) {
-      const conflictInfo = availability.conflicts
-        .map((c) => `${c.productName} (${c.inventoryNumber})`)
-        .join(", ");
-      return actionError(`Verfügbarkeitskonflikt bei: ${conflictInfo}`);
-    }
+    const needsLock = isBlockingStatus(data.status);
 
     const products = await prisma.product.findMany({
       where: { id: { in: productIds } },
       select: { id: true, dailyRateCents: true },
     });
     const rateByProductId = new Map(products.map((p) => [p.id, p.dailyRateCents]));
-
-    const rentalCostCents = data.items.reduce((sum, item) => {
-      const dailyRate = rateByProductId.get(item.productId) ?? 0;
-      return sum + dailyRate * item.quantity;
-    }, 0);
+    const rentalCostCents = calcRentalCostCents(
+      data.items,
+      rateByProductId,
+      data.startDate,
+      data.plannedReturnDate
+    );
 
     const booking = await prisma.$transaction(async (tx) => {
+      if (needsLock) {
+        await lockProducts(tx, productIds);
+        const availability = await checkMultipleProductsAvailability(
+          productIds,
+          data.startDate,
+          data.plannedReturnDate,
+          undefined,
+          data.prepDaysBefore,
+          data.prepDaysAfter,
+          tx
+        );
+        if (!availability.available) {
+          throw new Error(
+            `Verfügbarkeitskonflikt bei: ${formatConflictMessage(availability.conflicts)}`
+          );
+        }
+      }
+
       const created = await tx.booking.create({
         data: {
           bookingNumber: generateBookingNumber(),
@@ -319,21 +333,31 @@ export async function createBooking(input: z.input<typeof createBookingSchema>) 
       action: "CREATE",
       entityType: "Booking",
       entityId: booking.id,
-      newValue: booking,
+      newValue: {
+        id: booking.id,
+        bookingNumber: booking.bookingNumber,
+        status: booking.status,
+        startDate: booking.startDate,
+        plannedReturnDate: booking.plannedReturnDate,
+      },
     });
 
     revalidatePath("/buchungen");
     revalidatePath("/planung");
     revalidatePath("/produkte");
     return actionSuccess(serializeForClient({ id: booking.id, bookingNumber: booking.bookingNumber }));
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("Verfügbarkeitskonflikt")) return actionError(message);
     return actionError("Buchung konnte nicht erstellt werden");
   }
 }
 
 export async function updateBooking(id: string, input: z.infer<typeof updateBookingSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("bookings.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateBookingSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -368,36 +392,17 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
       ? data.items.map((item) => item.productId)
       : existing.items.map((item) => item.productId);
 
-    const availability = await checkMultipleProductsAvailability(
-      productIds,
-      startDate,
-      plannedReturnDate,
-      id,
-      prepDaysBefore,
-      prepDaysAfter
-    );
-
-    if (!availability.available) {
-      const conflictInfo = availability.conflicts
-        .map((c) => `${c.productName} (${c.inventoryNumber})`)
-        .join(", ");
-      return actionError(`Verfügbarkeitskonflikt bei: ${conflictInfo}`);
-    }
-
     const { items, ...bookingData } = data;
 
-    let rentalCostCents = bookingData.rentalCostCents ?? existing.rentalCostCents;
-    if (items) {
-      const products = await prisma.product.findMany({
-        where: { id: { in: productIds } },
-        select: { id: true, dailyRateCents: true },
-      });
-      const rateByProductId = new Map(products.map((p) => [p.id, p.dailyRateCents]));
-      rentalCostCents = items.reduce((sum, item) => {
-        const dailyRate = rateByProductId.get(item.productId) ?? 0;
-        return sum + dailyRate * item.quantity;
-      }, 0);
-    }
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, dailyRateCents: true },
+    });
+    const rateByProductId = new Map(products.map((p) => [p.id, p.dailyRateCents]));
+    const itemRows = items ?? existing.items.map((i) => ({ productId: i.productId, quantity: i.quantity }));
+    const rentalCostCents =
+      bookingData.rentalCostCents ??
+      calcRentalCostCents(itemRows, rateByProductId, startDate, plannedReturnDate);
 
     const transportCostCents = bookingData.transportCostCents ?? existing.transportCostCents;
     const additionalCostCents = bookingData.additionalCostCents ?? existing.additionalCostCents;
@@ -406,6 +411,24 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
       rentalCostCents + transportCostCents + additionalCostCents - discountCents;
 
     const booking = await prisma.$transaction(async (tx) => {
+      if (isBlockingStatus(status)) {
+        await lockProducts(tx, productIds);
+        const availability = await checkMultipleProductsAvailability(
+          productIds,
+          startDate,
+          plannedReturnDate,
+          id,
+          prepDaysBefore,
+          prepDaysAfter,
+          tx
+        );
+        if (!availability.available) {
+          throw new Error(
+            `Verfügbarkeitskonflikt bei: ${formatConflictMessage(availability.conflicts)}`
+          );
+        }
+      }
+
       if (items) {
         await tx.bookingItem.deleteMany({ where: { bookingId: id } });
       }
@@ -421,19 +444,11 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
           totalCostCents,
           items: items
             ? {
-                create: await Promise.all(
-                  items.map(async (item) => {
-                    const product = await tx.product.findUnique({
-                      where: { id: item.productId },
-                      select: { dailyRateCents: true },
-                    });
-                    return {
-                      productId: item.productId,
-                      quantity: item.quantity,
-                      dailyRateCents: product?.dailyRateCents,
-                    };
-                  })
-                ),
+                create: items.map((item) => ({
+                  productId: item.productId,
+                  quantity: item.quantity,
+                  dailyRateCents: rateByProductId.get(item.productId),
+                })),
               }
             : undefined,
         },
@@ -463,8 +478,16 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
       action: "UPDATE",
       entityType: "Booking",
       entityId: booking.id,
-      oldValue: existing,
-      newValue: booking,
+      oldValue: {
+        status: existing.status,
+        startDate: existing.startDate,
+        plannedReturnDate: existing.plannedReturnDate,
+      },
+      newValue: {
+        status: booking.status,
+        startDate: booking.startDate,
+        plannedReturnDate: booking.plannedReturnDate,
+      },
     });
 
     revalidatePath("/buchungen");
@@ -472,6 +495,8 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
     revalidatePath(`/buchungen/${id}`);
     return actionSuccess(serializeForClient({ id: booking.id, bookingNumber: booking.bookingNumber }));
   } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("Verfügbarkeitskonflikt")) return actionError(message);
     console.error("updateBooking failed:", error);
     return actionError("Buchung konnte nicht aktualisiert werden");
   }
@@ -479,7 +504,9 @@ export async function updateBooking(id: string, input: z.infer<typeof updateBook
 
 export async function advanceBookingStatus(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("bookings.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Buchungs-ID ist erforderlich");
@@ -502,6 +529,24 @@ export async function advanceBookingStatus(id: string) {
     const productIds = existing.items.map((item) => item.productId);
 
     const booking = await prisma.$transaction(async (tx) => {
+      if (isBlockingStatus(nextStatus)) {
+        await lockProducts(tx, productIds);
+        const availability = await checkMultipleProductsAvailability(
+          productIds,
+          existing.startDate,
+          existing.plannedReturnDate,
+          id,
+          existing.prepDaysBefore,
+          existing.prepDaysAfter,
+          tx
+        );
+        if (!availability.available) {
+          throw new Error(
+            `Verfügbarkeitskonflikt bei: ${formatConflictMessage(availability.conflicts)}`
+          );
+        }
+      }
+
       const updated = await tx.booking.update({
         where: { id },
         data: { status: nextStatus },
@@ -539,7 +584,9 @@ export async function advanceBookingStatus(id: string) {
     revalidatePath("/planung");
     revalidatePath("/produkte");
     return actionSuccess(serializeForClient({ id: booking.id, status: booking.status }));
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("Verfügbarkeitskonflikt")) return actionError(message);
     return actionError("Status konnte nicht aktualisiert werden");
   }
 }
@@ -551,7 +598,10 @@ export async function updateBookingDates(
   endDate: Date | string
 ) {
   try {
-    const user = await requireAuth();
+    const planningAuth = await authorize("planning.edit");
+    const auth = planningAuth.ok ? planningAuth : await authorize("bookings.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const actor = auth.user;
 
     if (!bookingId) {
       return actionError("Buchungs-ID ist erforderlich");
@@ -586,36 +636,69 @@ export async function updateBookingDates(
       return actionError("Produkt gehört nicht zu dieser Buchung");
     }
 
-    const availability = await checkMultipleProductsAvailability(
-      [productId],
+    const productIds = existing.items.map((item) => item.productId);
+    const products = await prisma.product.findMany({
+      where: { id: { in: productIds } },
+      select: { id: true, dailyRateCents: true },
+    });
+    const rateByProductId = new Map(products.map((p) => [p.id, p.dailyRateCents]));
+    const rentalCostCents = calcRentalCostCents(
+      existing.items.map((i) => ({ productId: i.productId, quantity: i.quantity })),
+      rateByProductId,
       parsedStart,
-      parsedEnd,
-      actualBookingId,
-      existing.prepDaysBefore,
-      existing.prepDaysAfter
+      parsedEnd
     );
+    const totalCostCents =
+      rentalCostCents +
+      existing.transportCostCents +
+      existing.additionalCostCents -
+      existing.discountCents;
 
-    const booking = await prisma.booking.update({
-      where: { id: actualBookingId },
-      data: {
-        startDate: parsedStart,
-        plannedReturnDate: parsedEnd,
-      },
-      include: {
-        customer: true,
-        items: { include: { product: true } },
-      },
+    const booking = await prisma.$transaction(async (tx) => {
+      if (isBlockingStatus(existing.status)) {
+        await lockProducts(tx, productIds);
+        const availability = await checkMultipleProductsAvailability(
+          productIds,
+          parsedStart,
+          parsedEnd,
+          actualBookingId,
+          existing.prepDaysBefore,
+          existing.prepDaysAfter,
+          tx
+        );
+        if (!availability.available) {
+          throw new Error(
+            `Verfügbarkeitskonflikt bei: ${formatConflictMessage(availability.conflicts)}`
+          );
+        }
+      }
+
+      const updated = await tx.booking.update({
+        where: { id: actualBookingId },
+        data: {
+          startDate: parsedStart,
+          plannedReturnDate: parsedEnd,
+          rentalCostCents,
+          totalCostCents,
+        },
+        include: {
+          customer: true,
+          items: { include: { product: true } },
+        },
+      });
+
+      for (const item of existing.items) {
+        await tx.product.update({
+          where: { id: item.productId },
+          data: { nextBookingAt: parsedStart },
+        });
+      }
+
+      return updated;
     });
 
-    for (const item of existing.items) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: { nextBookingAt: parsedStart },
-      });
-    }
-
     await createAuditLog({
-      userId: user.id,
+      userId: actor.id,
       action: "UPDATE",
       entityType: "Booking",
       entityId: booking.id,
@@ -626,25 +709,22 @@ export async function updateBookingDates(
     revalidatePath("/planung");
     revalidatePath("/buchungen");
 
-    if (!availability.available) {
-      return actionSuccess({
-        bookingId: booking.id,
-        conflicts: availability.conflicts.length,
-      });
-    }
-
     return actionSuccess({
       bookingId: booking.id,
       conflicts: 0,
     });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.startsWith("Verfügbarkeitskonflikt")) return actionError(message);
     return actionError("Buchungsdaten konnten nicht aktualisiert werden");
   }
 }
 
 export async function archiveBooking(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("bookings.delete");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Buchungs-ID ist erforderlich");
@@ -697,7 +777,9 @@ export async function archiveBooking(id: string) {
 
 export async function cancelBooking(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("bookings.delete");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Buchungs-ID ist erforderlich");
@@ -759,7 +841,8 @@ export async function checkAvailability(
   excludeBookingId?: string
 ) {
   try {
-    await requireAuth();
+    const auth = await authorize("bookings.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!productIds.length) {
       return actionError("Mindestens ein Produkt erforderlich");
@@ -782,7 +865,8 @@ export async function checkAvailability(
 }
 
 export async function getBookingsForCheckout() {
-  await requireAuth();
+  const auth = await authorize("checkout.view");
+  if (!auth.ok) return [];
   const bookings = await prisma.booking.findMany({
     where: {
       isArchived: false,

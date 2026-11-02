@@ -5,7 +5,7 @@ import { z } from "zod";
 import { EventStatus, EventType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const CHECKLIST_ITEMS = [
@@ -92,7 +92,8 @@ const toggleChecklistSchema = z.object({
 
 export async function getEvents(filters?: z.infer<typeof eventFiltersSchema>) {
   try {
-    await requireAuth();
+    const auth = await authorize("events.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const parsed = filters ? eventFiltersSchema.safeParse(filters) : { success: true as const, data: {} };
     if (!parsed.success) {
@@ -142,7 +143,8 @@ export async function getEvents(filters?: z.infer<typeof eventFiltersSchema>) {
 
 export async function getEvent(id: string) {
   try {
-    await requireAuth();
+    const auth = await authorize("events.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!id) {
       return actionError("Veranstaltungs-ID ist erforderlich");
@@ -173,7 +175,9 @@ export async function getEvent(id: string) {
 
 export async function createEvent(input: z.infer<typeof createEventSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("events.create");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createEventSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -240,7 +244,9 @@ export async function createEvent(input: z.infer<typeof createEventSchema>) {
 
 export async function updateEvent(id: string, input: z.infer<typeof updateEventSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("events.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateEventSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -306,7 +312,9 @@ export async function updateEvent(id: string, input: z.infer<typeof updateEventS
 
 export async function deleteEvent(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("events.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Veranstaltungs-ID ist erforderlich");
@@ -356,7 +364,9 @@ export async function deleteEvent(id: string) {
 
 export async function toggleChecklistItem(input: z.infer<typeof toggleChecklistSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("events.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = toggleChecklistSchema.safeParse(input);
 
     if (!parsed.success) {

@@ -4,6 +4,7 @@ import { ProductStatus } from "@prisma/client";
 import { endOfMonth, endOfYear, startOfMonth, startOfYear } from "date-fns";
 import { prisma } from "@/lib/prisma";
 import { productStatusLabels } from "@/lib/labels";
+import { authorize } from "@/lib/session";
 
 /** Statuses that mean the product is currently out of the main warehouse */
 const OUT_OF_HOUSE_STATUSES: ProductStatus[] = [
@@ -64,6 +65,17 @@ export type ProductRevenue = {
 };
 
 export async function getReportData(year?: number) {
+  const auth = await authorize("reports.view");
+  if (!auth.ok) {
+    return {
+      year: year ?? new Date().getFullYear(),
+      monthlyRevenue: [],
+      productRevenueByMonth: Array.from({ length: 12 }, () => []),
+      topProducts: [],
+      utilization: [],
+    };
+  }
+
   const now = new Date();
   const selectedYear = year ?? now.getFullYear();
   const yearStart = startOfYear(new Date(selectedYear, 0, 1));
@@ -136,9 +148,17 @@ export async function getReportData(year?: number) {
     >();
 
     for (const booking of monthBookings) {
+      const itemWeight = booking.items.reduce((s, item) => {
+        const rateCents = item.dailyRateCents ?? item.product.dailyRateCents;
+        return s + rateCents * item.quantity;
+      }, 0);
       for (const item of booking.items) {
         const rateCents = item.dailyRateCents ?? item.product.dailyRateCents;
-        const itemRevenue = (rateCents * item.quantity) / 100;
+        const weight = rateCents * item.quantity;
+        const itemRevenue =
+          itemWeight > 0
+            ? (booking.totalCostCents * weight) / itemWeight / 100
+            : 0;
         const existing = productMap.get(item.product.id);
         if (existing) {
           existing.revenue += itemRevenue;

@@ -442,6 +442,9 @@ export async function performCheckIn(input: z.infer<typeof performCheckInSchema>
 export async function prepareDemoHandoverBooking() {
   try {
     const user = await requireAuth();
+    if (user.role !== "ADMIN") {
+      return actionError("Demo-Übergabe nur für Administratoren");
+    }
     if (!hasPermission(user.role, "checkout.perform")) {
       return actionError("Keine Berechtigung für Übergaben");
     }
@@ -573,7 +576,9 @@ export async function uploadCheckoutImage(formData: FormData) {
     const { url } = await saveFile(file, folder);
 
     return actionSuccess({ url, caption });
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message) return actionError(message);
     return actionError("Foto konnte nicht hochgeladen werden");
   }
 }

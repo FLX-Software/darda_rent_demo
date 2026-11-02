@@ -5,7 +5,7 @@ import { z } from "zod";
 import { LocationType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const locationFiltersSchema = z.object({
@@ -26,7 +26,8 @@ const createLocationSchema = z.object({
 
 export async function getLocations(filters?: z.infer<typeof locationFiltersSchema>) {
   try {
-    await requireAuth();
+    const auth = await authorize("locations.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const parsed = filters
       ? locationFiltersSchema.safeParse(filters)
@@ -66,7 +67,9 @@ export async function getLocations(filters?: z.infer<typeof locationFiltersSchem
 
 export async function createLocation(input: z.infer<typeof createLocationSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("locations.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createLocationSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -111,7 +114,9 @@ export async function updateLocation(
   input: z.infer<typeof updateLocationSchema>
 ) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("locations.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateLocationSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -150,7 +155,9 @@ export async function updateLocation(
 
 export async function deleteLocation(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("locations.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Standort-ID ist erforderlich");

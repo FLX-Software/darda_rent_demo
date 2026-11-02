@@ -3,7 +3,7 @@
 import { addDays, endOfDay, startOfDay, startOfMonth, endOfMonth } from "date-fns";
 import { BookingStatus } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
 import { serializeForClient } from "@/lib/utils";
 import { actionError, actionSuccess } from "./types";
 
@@ -16,7 +16,10 @@ const PLANNING_EXCLUDED: BookingStatus[] = [
 
 export async function getDashboardStats() {
   try {
-    await requireAuth();
+    const auth = await authorize("dashboard.view");
+    if (!auth.ok) {
+      return actionError(auth.error);
+    }
 
     const today = startOfDay(new Date());
     const tomorrow = addDays(today, 1);

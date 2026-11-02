@@ -49,6 +49,18 @@ export async function requirePermission(permission: Permission) {
   return user;
 }
 
+/** Für Server Actions: Auth + Recht ohne Redirect (für ActionResult). */
+export async function authorize(
+  permission: Permission
+): Promise<{ ok: true; user: AuthUser } | { ok: false; error: string }> {
+  const user = await getCurrentUser();
+  if (!user) return { ok: false, error: "Nicht angemeldet" };
+  if (!hasPermission(user.role, permission)) {
+    return { ok: false, error: "Keine Berechtigung" };
+  }
+  return { ok: true, user };
+}
+
 export async function requireRouteAccess(pathname: string) {
   const user = await requireAuth();
   if (!canAccessRoute(user.role, pathname)) {
