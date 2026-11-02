@@ -386,7 +386,7 @@ export function EventForm({ mode, initial }: EventFormProps) {
                   <ConfirmDeleteButton
                     entityLabel="Veranstaltung"
                     entityName={initial.name}
-                    onDelete={() => deleteEvent(initial.id)}
+                    onDelete={() => deleteEvent(initial.id!)}
                     redirectTo="/messen-demos"
                   />
                 </div>

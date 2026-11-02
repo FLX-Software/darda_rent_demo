@@ -5,7 +5,7 @@ import { z } from "zod";
 import { MaintenanceStatus, MaintenanceType } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize } from "@/lib/session";
 import { actionError, actionSuccess, getValidationError } from "./types";
 
 const maintenanceFiltersSchema = z.object({
@@ -36,7 +36,8 @@ const updateMaintenanceSchema = createMaintenanceSchema.partial().extend({
 
 export async function getMaintenances(filters?: z.infer<typeof maintenanceFiltersSchema>) {
   try {
-    await requireAuth();
+    const auth = await authorize("maintenance.view");
+    if (!auth.ok) return actionError(auth.error);
 
     const parsed = filters
       ? maintenanceFiltersSchema.safeParse(filters)
@@ -78,7 +79,8 @@ export async function getMaintenances(filters?: z.infer<typeof maintenanceFilter
 
 export async function getMaintenance(id: string) {
   try {
-    await requireAuth();
+    const auth = await authorize("maintenance.view");
+    if (!auth.ok) return actionError(auth.error);
 
     if (!id) {
       return actionError("Wartungs-ID ist erforderlich");
@@ -105,7 +107,9 @@ export async function getMaintenance(id: string) {
 
 export async function createMaintenance(input: z.infer<typeof createMaintenanceSchema>) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("maintenance.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = createMaintenanceSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -191,7 +195,9 @@ export async function updateMaintenance(
   input: z.infer<typeof updateMaintenanceSchema>
 ) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("maintenance.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
     const parsed = updateMaintenanceSchema.safeParse(input);
 
     if (!parsed.success) {
@@ -277,7 +283,9 @@ export async function updateMaintenance(
 
 export async function deleteMaintenance(id: string) {
   try {
-    const user = await requireAuth();
+    const auth = await authorize("maintenance.edit");
+    if (!auth.ok) return actionError(auth.error);
+    const user = auth.user;
 
     if (!id) {
       return actionError("Wartungs-ID ist erforderlich");

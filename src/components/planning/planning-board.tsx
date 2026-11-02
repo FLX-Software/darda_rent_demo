@@ -559,7 +559,9 @@ export function PlanningBoard({
     if (pendingChanges.length === 0) return;
     setSaving(true);
     setSaveMessage(null);
-    let totalConflicts = 0;
+    const remaining: PendingChange[] = [];
+    let saved = 0;
+    let firstError = "";
     for (const change of pendingChanges) {
       const result = await updateBookingDates(
         change.bookingId,
@@ -567,15 +569,24 @@ export function PlanningBoard({
         change.startDate.toISOString(),
         change.endDate.toISOString()
       );
-      if (result.conflicts) totalConflicts += result.conflicts;
+      if (!result.success) {
+        remaining.push(change);
+        if (!firstError) firstError = result.error ?? "Konflikt – Verschiebung nicht gespeichert";
+        continue;
+      }
+      saved += 1;
     }
-    setPendingChanges([]);
+    setPendingChanges(remaining);
     setSaving(false);
-    setSaveMessage(
-      totalConflicts > 0
-        ? `Gespeichert mit ${totalConflicts} möglichen Konflikt(en)`
-        : "Änderungen erfolgreich gespeichert"
-    );
+    if (firstError) {
+      setSaveMessage(
+        remaining.length === pendingChanges.length
+          ? firstError
+          : `${saved} gespeichert, ${remaining.length} wegen Konflikt übersprungen: ${firstError}`
+      );
+    } else {
+      setSaveMessage("Änderungen erfolgreich gespeichert");
+    }
   };
 
   const navigate = (dir: -1 | 1) => {

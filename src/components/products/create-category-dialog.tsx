@@ -18,15 +18,15 @@ export function CreateCategoryDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  async function handleCreate() {
     setLoading(true);
     setError("");
-    const fd = new FormData(e.currentTarget);
     const result = await createProductCategory({
-      name: fd.get("name") as string,
-      description: (fd.get("description") as string) || undefined,
+      name,
+      description: description || undefined,
     });
     setLoading(false);
     if (!result.success || !result.data) {
@@ -34,6 +34,8 @@ export function CreateCategoryDialog({
       return;
     }
     onCreated?.({ id: result.data.id, name: result.data.name });
+    setName("");
+    setDescription("");
     setOpen(false);
     router.refresh();
   }
@@ -49,26 +51,48 @@ export function CreateCategoryDialog({
 
   return (
     <Card className="border-dashed">
-      <CardContent className="p-3">
-        <form onSubmit={handleSubmit} className="space-y-2">
-          <div className="space-y-1">
-            <Label htmlFor="cat-name">Neue Kategorie</Label>
-            <Input id="cat-name" name="name" required placeholder="z.B. MC" />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="cat-desc">Beschreibung</Label>
-            <Input id="cat-desc" name="description" placeholder="Optional" />
-          </div>
-          {error && <p className="text-xs text-status-damage">{error}</p>}
-          <div className="flex gap-2">
-            <Button type="submit" size="sm" disabled={loading}>
-              {loading ? "…" : "Anlegen"}
-            </Button>
-            <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>
-              Abbrechen
-            </Button>
-          </div>
-        </form>
+      <CardContent className="space-y-2 p-3">
+        <div className="space-y-1">
+          <Label htmlFor="cat-name">Neue Kategorie</Label>
+          <Input
+            id="cat-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+            placeholder="z.B. MC"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label htmlFor="cat-desc">Beschreibung</Label>
+          <Input
+            id="cat-desc"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Optional"
+          />
+        </div>
+        {error && <p className="text-xs text-status-damage">{error}</p>}
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={loading || !name.trim()}
+            onClick={handleCreate}
+          >
+            {loading ? "…" : "Anlegen"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setOpen(false);
+              setError("");
+            }}
+          >
+            Abbrechen
+          </Button>
+        </div>
       </CardContent>
     </Card>
   );

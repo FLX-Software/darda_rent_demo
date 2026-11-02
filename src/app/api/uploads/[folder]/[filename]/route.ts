@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || "./uploads";
 
@@ -17,6 +19,18 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ folder: string; filename: string }> }
 ) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Nicht angemeldet" }, { status: 401 });
+  }
+
+  if (process.env.VERCEL && (process.env.STORAGE_TYPE || "local") === "local") {
+    return NextResponse.json(
+      { error: "Lokale Uploads sind auf Vercel nicht verfügbar" },
+      { status: 503 }
+    );
+  }
+
   const { folder, filename } = await params;
 
   if (!/^[\w-]+$/.test(folder) || !/^[\w.-]+$/.test(filename)) {
@@ -33,7 +47,7 @@ export async function GET(
     return new NextResponse(buffer, {
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=31536000, immutable",
+        "Cache-Control": "private, max-age=3600",
       },
     });
   } catch {

@@ -82,11 +82,6 @@ export default function LoginPage() {
               {loading ? "Anmelden…" : "Anmelden"}
             </Button>
           </form>
-          <div className="mt-6 rounded-md border border-dashed border-gray-200 bg-gray-50 p-4 text-center text-sm text-gray-500">
-            <p className="font-medium text-flx-navy">Demo-Zugangsdaten</p>
-            <p className="mt-1">admin@darda.de / admin123</p>
-            <p>lager@darda.de / lager123</p>
-          </div>
         </CardContent>
       </Card>
     </div>

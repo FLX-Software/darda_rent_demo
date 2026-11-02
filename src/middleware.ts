@@ -4,7 +4,7 @@ import { getToken } from "next-auth/jwt";
 import { UserRole } from "@prisma/client";
 import { canAccessRoute } from "@/lib/permissions";
 
-const publicPaths = ["/login", "/api/auth", "/api/uploads", "/qr"];
+const publicPaths = ["/login", "/api/auth", "/qr"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

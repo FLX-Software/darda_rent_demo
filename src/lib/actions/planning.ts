@@ -1,8 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/prisma";
-import { revalidatePath } from "next/cache";
 import { BookingType, ProductStatus } from "@prisma/client";
+import { authorize } from "@/lib/session";
+import { updateBookingDates as updateBookingDatesSecure } from "@/lib/actions/bookings";
 
 export interface PlanningProductRow {
   id: string;
@@ -30,6 +31,11 @@ export async function getPlanningData(
   endDate: Date,
   filters?: { categoryId?: string; status?: ProductStatus; search?: string }
 ) {
+  const auth = await authorize("planning.view");
+  if (!auth.ok) {
+    return { products: [], bookings: [] };
+  }
+
   const products = await prisma.product.findMany({
     where: {
       isArchived: false,
@@ -113,45 +119,18 @@ export async function updateBookingDates(
   startDate: string,
   endDate: string
 ) {
-  const actualBookingId = bookingId.includes("-") ? bookingId.split("-")[0] : bookingId;
-
-  const booking = await prisma.booking.findUnique({
-    where: { id: actualBookingId },
-    include: { items: true },
-  });
-
-  if (!booking) {
-    return { success: false, error: "Buchung nicht gefunden" };
+  const result = await updateBookingDatesSecure(bookingId, productId, startDate, endDate);
+  if (!result.success) {
+    return { success: false as const, error: result.error ?? "Speichern fehlgeschlagen", conflicts: 0 };
   }
-
-  const overlapping = await prisma.booking.findMany({
-    where: {
-      id: { not: actualBookingId },
-      isArchived: false,
-      status: { notIn: ["STORNIERT", "ABGESCHLOSSEN", "ENTWURF"] },
-      items: { some: { productId } },
-      startDate: { lte: new Date(endDate) },
-      plannedReturnDate: { gte: new Date(startDate) },
-    },
-  });
-
-  await prisma.booking.update({
-    where: { id: actualBookingId },
-    data: {
-      startDate: new Date(startDate),
-      plannedReturnDate: new Date(endDate),
-    },
-  });
-
-  revalidatePath("/planung");
-  revalidatePath("/buchungen");
-
   return {
-    success: true,
-    conflicts: overlapping.length,
+    success: true as const,
+    conflicts: result.data?.conflicts ?? 0,
   };
 }
 
 export async function getPlanningCategories() {
+  const auth = await authorize("planning.view");
+  if (!auth.ok) return [];
   return prisma.productCategory.findMany({ orderBy: { sortOrder: "asc" } });
 }

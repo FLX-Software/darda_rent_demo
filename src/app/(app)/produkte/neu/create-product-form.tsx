@@ -92,6 +92,11 @@ export function CreateProductForm({
     fd.set("categoryId", categoryId);
     fd.set("condition", condition);
     if (imageFile) {
+      if (imageFile.size > 10 * 1024 * 1024) {
+        setError("Bild darf maximal 10 MB groß sein.");
+        setLoading(false);
+        return;
+      }
       fd.set("image", imageFile);
     }
 
@@ -110,8 +115,13 @@ export function CreateProductForm({
         return;
       }
       router.push(`/produkte/${result.data.id}`);
-    } catch {
-      setError(isEdit ? "Fehler beim Speichern des Produkts." : "Fehler beim Anlegen des Produkts.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (/Body exceeded|413|too large|body size/i.test(message)) {
+        setError("Das Bild ist zu groß für den Upload. Bitte ein kleineres Bild verwenden (max. 10 MB).");
+      } else {
+        setError(isEdit ? "Fehler beim Speichern des Produkts." : "Fehler beim Anlegen des Produkts.");
+      }
       setLoading(false);
     }
   };

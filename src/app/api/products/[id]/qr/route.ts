@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
+import { hasPermission } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import type { UserRole } from "@prisma/client";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user) {
+    return NextResponse.json({ error: "Nicht angemeldet" }, { status: 401 });
+  }
+  const role = session.user.role as UserRole | undefined;
+  if (!role || !hasPermission(role, "products.view")) {
+    return NextResponse.json({ error: "Keine Berechtigung" }, { status: 403 });
+  }
+
   const { id } = await params;
   const format = request.nextUrl.searchParams.get("format") || "png";
 

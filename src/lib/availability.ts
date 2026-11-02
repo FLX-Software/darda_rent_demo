@@ -1,8 +1,11 @@
-import { prisma } from "./prisma";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import { BookingStatus, BookingType, ProductStatus } from "@prisma/client";
 import { addDays, subDays } from "date-fns";
+import { prisma } from "./prisma";
 
-const BLOCKING_STATUSES: BookingStatus[] = [
+type Db = PrismaClient | Prisma.TransactionClient;
+
+export const BLOCKING_STATUSES: BookingStatus[] = [
   "VORGEMERKT",
   "BESTAETIGT",
   "IN_VORBEREITUNG",
@@ -48,7 +51,7 @@ export interface AvailabilityResult {
   nextFreeSlot?: { start: Date; end: Date };
 }
 
-function getEffectiveRange(
+export function getEffectiveRange(
   startDate: Date,
   endDate: Date,
   prepBefore: number,
@@ -64,15 +67,31 @@ function rangesOverlap(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): bool
   return aStart <= bEnd && bStart <= aEnd;
 }
 
+export function isBlockingStatus(status: BookingStatus): boolean {
+  return BLOCKING_STATUSES.includes(status);
+}
+
+/** Sperrt Produktzeilen in der Transaktion gegen parallele Buchungen. */
+export async function lockProducts(tx: Prisma.TransactionClient, productIds: string[]) {
+  const unique = [...new Set(productIds)].filter(Boolean);
+  if (unique.length === 0) return;
+  await tx.$queryRaw`
+    SELECT id FROM "Product"
+    WHERE id IN (${Prisma.join(unique)})
+    FOR UPDATE
+  `;
+}
+
 export async function checkProductAvailability(
   productId: string,
   startDate: Date,
   endDate: Date,
   excludeBookingId?: string,
   prepBefore = 0,
-  prepAfter = 0
+  prepAfter = 0,
+  db: Db = prisma
 ): Promise<AvailabilityResult> {
-  const product = await prisma.product.findUnique({
+  const product = await db.product.findUnique({
     where: { id: productId },
     include: { category: true },
   });
@@ -85,7 +104,7 @@ export async function checkProductAvailability(
     return { available: false, conflicts: [], alternatives: [] };
   }
 
-  const overdueMaintenance = await prisma.maintenance.findFirst({
+  const overdueMaintenance = await db.maintenance.findFirst({
     where: {
       productId,
       status: "UEBERFAELLIG",
@@ -99,7 +118,7 @@ export async function checkProductAvailability(
 
   const range = getEffectiveRange(startDate, endDate, prepBefore, prepAfter);
 
-  const existingBookings = await prisma.booking.findMany({
+  const existingBookings = await db.booking.findMany({
     where: {
       isArchived: false,
       status: { in: BLOCKING_STATUSES },
@@ -149,7 +168,7 @@ export async function checkProductAvailability(
   let alternatives: { id: string; name: string; inventoryNumber: string }[] = [];
 
   if (conflicts.length > 0) {
-    alternatives = await prisma.product.findMany({
+    alternatives = await db.product.findMany({
       where: {
         categoryId: product.categoryId,
         id: { not: productId },
@@ -174,7 +193,8 @@ export async function checkMultipleProductsAvailability(
   endDate: Date,
   excludeBookingId?: string,
   prepBefore = 0,
-  prepAfter = 0
+  prepAfter = 0,
+  db: Db = prisma
 ): Promise<AvailabilityResult> {
   const allConflicts: AvailabilityConflict[] = [];
   const allAlternatives: { id: string; name: string; inventoryNumber: string }[] = [];
@@ -186,7 +206,8 @@ export async function checkMultipleProductsAvailability(
       endDate,
       excludeBookingId,
       prepBefore,
-      prepAfter
+      prepAfter,
+      db
     );
     allConflicts.push(...result.conflicts);
     allAlternatives.push(...result.alternatives);
@@ -201,6 +222,10 @@ export async function checkMultipleProductsAvailability(
     conflicts: allConflicts,
     alternatives: uniqueAlternatives.slice(0, 5),
   };
+}
+
+export function formatConflictMessage(conflicts: AvailabilityConflict[]): string {
+  return conflicts.map((c) => `${c.productName} (${c.inventoryNumber})`).join(", ");
 }
 
 export function getProductStatusForBookingType(type: BookingType): ProductStatus {

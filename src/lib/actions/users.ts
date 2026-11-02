@@ -6,7 +6,7 @@ import bcrypt from "bcryptjs";
 import { UserRole } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createAuditLog } from "@/lib/audit";
-import { requireAuth } from "@/lib/session";
+import { authorize, requireAuth } from "@/lib/session";
 import { hasPermission } from "@/lib/permissions";
 import {
   canAddActiveUser,
@@ -54,7 +54,10 @@ async function countActiveUsers(excludeId?: string): Promise<UserLimitCounts> {
 }
 
 export async function getUserLimits() {
-  await requireAuth();
+  const auth = await authorize("users.view");
+  if (!auth.ok) {
+    return { totalActive: 0, activeAdmins: 0, activeStandard: 0, message: auth.error };
+  }
   const counts = await countActiveUsers();
   return {
     ...counts,
@@ -63,7 +66,8 @@ export async function getUserLimits() {
 }
 
 export async function getUsers() {
-  await requireAuth();
+  const auth = await authorize("users.view");
+  if (!auth.ok) return [];
   return prisma.user.findMany({
     where: { isActive: true },
     orderBy: { lastName: "asc" },
